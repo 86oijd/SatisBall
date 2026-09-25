@@ -66,7 +66,7 @@
       const glowAmt = (o.glow ?? 1) * look.glow;
       if (glowAmt > 0 && !look.light) {
         ctx.globalCompositeOperation = 'lighter';
-        draw.glow(ctx, b.x, b.y, r * 5.2, color, 0.5 * glowAmt + b.flash * 0.5);
+        draw.glow(ctx, b.x, b.y, Math.min(r * 5.2, r * 2 + 420), color, 0.5 * glowAmt + b.flash * 0.5);
         ctx.globalCompositeOperation = 'source-over';
       } else if (look.light) {
         ctx.globalAlpha = 0.18; ctx.fillStyle = '#2a1a40';

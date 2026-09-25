@@ -87,6 +87,11 @@
       ctx.fillStyle = o.color || '#ffffff'; ctx.fillText(text, b.x, y);
       ctx.textAlign = 'left';
     }
+    /** Position-only projection back inside a circle (after ball-ball pushes). */
+    keepInCircle(b, cx, cy, R) {
+      const dx = b.x - cx, dy = b.y - cy, d = Math.hypot(dx, dy), lim = R - b.r;
+      if (d > lim && d > 0) { b.x = cx + dx / d * lim; b.y = cy + dy / d * lim; const vn = (b.vx * dx + b.vy * dy) / d; if (vn > 0) { b.vx -= 2 * vn * dx / d; b.vy -= 2 * vn * dy / d; } }
+    }
     /** Integrate with gravity (semi-implicit Euler). */
     integrate(b, h, g = 0) { b.vy += g * h; b.x += b.vx * h; b.y += b.vy * h; }
     /** Keep a ball inside the screen box (used after escapes / during outros). */

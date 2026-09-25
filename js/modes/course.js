@@ -40,7 +40,7 @@
       y = 300;
       const pool = ['ramps', 'plinko', 'trapdoor', 'crumble', 'gate', 'pistons', 'spinners', 'bounce', 'keydoor', 'split'];
       const must = ['gate', 'crumble', 'trapdoor', 'ramps'];
-      const n = s.length;
+      const n = s.assist ? Math.round(clamp(s.length * (this.g.targetLen / 35), 4, 18)) : s.length;
       const plan = [];
       const bag = rng.shuffle(must.slice(0, Math.min(must.length, n - 1)).concat(rng.shuffle(pool.slice())).slice(0, n));
       for (let i = 0; i < n; i++) {
@@ -454,6 +454,7 @@
         this.leader = L;
       }
     }
+    audit() { const v = []; for (const b of this.alive()) { if (b.x < XL - 1 || b.x > XR + 1) v.push('ball through side wall'); if (b.y > this.finishY + 560) v.push('ball fell through floor'); } return v; }
     forceEnd() { this.wallV += 30; this.s.wallSpeed *= 1.01; }
 
     // ---------------------------------------------------------------- rendering

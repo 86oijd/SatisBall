@@ -26,7 +26,7 @@
       g.tension = clamp(prog, 0, 1);
       if (s.assist && g.state === 'play') {
         const exp = clamp(g.time / (g.targetLen * 0.88), 0, 1);
-        if (prog < exp - 0.05) this.speedK = Math.min(1.8, this.speedK + dt * 0.08); else if (prog > exp + 0.05) this.speedK = Math.max(0.8, this.speedK - dt * 0.05);
+        if (prog < exp - 0.05) this.speedK = Math.min(2.6, this.speedK + dt * 0.12); else if (prog > exp + 0.05) this.speedK = Math.max(0.8, this.speedK - dt * 0.05);
       }
       this.w = s.spin * (1 + prog * 0.6);
       this.rot += this.w * dt;
@@ -78,6 +78,7 @@
       for (let i = 0; i < 4; i++) this.fx.ring(b.x, b.y, this.pal.grad[i], 300 + i * 130, 0.7 + i * 0.1, 10);
       g.win({ title: `${this.s.goal} STRINGS!`, sub: `woven in ${SB.util.fmtTime(g.time)}`, color: this.pal.accent, y: 640 });
     }
+    audit() { const b = this.ball; return !this.snapped && Math.hypot(b.x - this.cx, b.y - this.cy) > this.R + 2 ? ['ball outside arena'] : []; }
     forceEnd() { this.speedK = 2.2; }
     path(ctx, inset = 0) {
       ctx.beginPath();

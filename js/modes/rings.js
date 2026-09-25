@@ -104,6 +104,8 @@
       }
     }
     breakRing(ring, b) {
+      const ang = Math.atan2(b.y - this.cy, b.x - this.cx);
+      if (!P.inGap(ang, ring.rot + ring.gapNow / 2 - 0.15, TAU - ring.gapNow - 0.0) && !P.inGap(ang, ring.rot + ring.gapNow / 2, TAU - ring.gapNow)) this.violations = (this.violations || 0) + 1;
       const s = this.s, g = this.g;
       ring.alive = false;
       this.broken++;
@@ -126,6 +128,13 @@
         this.fx.burst(b.x, b.y, b.color, 60, 1100, { colors: this.pal.grad });
         g.win({ title: multi ? `${b.name} ESCAPED!` : 'ESCAPED!', sub: `${this.rings.length} rings · ${SB.util.fmtTime(g.time)}`, color: b.color });
       }
+    }
+    audit() {
+      const v = [];
+      if (this.violations) v.push('ring broken outside gap x' + this.violations);
+      const r = this.inner;
+      if (r) for (const b of this.balls) if (!b.out && Math.hypot(b.x - this.cx, b.y - this.cy) > r.R + this.s.thickness + b.r * 1.5) v.push('ball beyond inner ring');
+      return v;
     }
     forceEnd() {
       // overtime: blow the remaining rings open one by one quickly

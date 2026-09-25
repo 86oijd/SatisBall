@@ -82,7 +82,10 @@
             if (s.rule === 'wall' && g.state === 'play' && this.rng.chance(this.p)) toSpawn.push(b);
           }
         }
-        if (s.collide) { this.grid.build(this.balls); this.grid.pairs(this.balls, (a, b) => P.ballBall(a, b, 1)); }
+        if (s.collide) {
+          this.grid.build(this.balls); this.grid.pairs(this.balls, (a, b) => P.ballBall(a, b, 1));
+          for (const b of this.balls) if (b.alive) { if (pts) P.insidePolygon(b, pts, this.cx, this.cy, this.w, 1); else if (s.rule !== 'escape') this.keepInCircle(b, this.cx, this.cy, this.R); }
+        }
         for (const b of this.balls) if (b.alive) P.lockEnergy(b, s.gravity);
       }
       this.balls = this.balls.filter((b) => b.alive);
@@ -114,6 +117,10 @@
       this.exploded = true;
       for (let k = 0; k < 5; k++) this.fx.ring(this.cx, this.cy, this.pal.grad[k], 400 + k * 150, 0.8 + k * 0.1, 14);
       g.win({ title: `${this.s.target} BALLS!`, sub: `from 1 ball in ${SB.util.fmtTime(g.time)}`, color: this.pal.accent, y: 700 });
+    }
+    audit() {
+      if (this.exploded || this.s.rule === 'escape') return [];
+      const v = []; for (const b of this.balls) if (Math.hypot(b.x - this.cx, b.y - this.cy) > this.R + 2) { v.push('ball outside arena'); break; } return v;
     }
     forceEnd() { this.p = 1; }
     render(ctx) {

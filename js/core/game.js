@@ -104,6 +104,7 @@
       this.settings = Object.assign({}, this.def.defaults, cfg.settings || {});
       this.mode = this.def.create(this, this.settings);
       this.mode.init && this.mode.init();
+      this.snd.sfx('whoosh', 0.45, 0, 1.1); // audible from frame one
     }
     get pace() { return this.time / this.targetLen; }
     pan(x) { return clamp((x - this.cam.x) / W * 2 - 1, -1, 1); }
@@ -115,6 +116,7 @@
     win(info) {
       if (this.state !== 'play') return;
       this.state = 'finale'; this.finaleAt = this.clock; this.winInfo = info;
+      this.fx.banners.length = 0;
       this.slowmo(info.slow ?? 0.3, info.slowDur ?? 1.1);
       this.fx.flash(info.color || '#ffffff', 0.55);
       this.shake(0.7);
@@ -243,22 +245,32 @@
     }
     renderWinner(ctx) {
       const w = this.winInfo; if (!w) return;
-      const k = clamp((this.clock - this.finaleAt) / 0.55, 0, 1);
+      const dt = this.clock - this.finaleAt;
+      const k = clamp(dt / 0.55, 0, 1);
       const s = easeOutBack(k);
+      // dim the scene so the payoff reads instantly
+      ctx.globalAlpha = 0.58 * clamp(dt / 0.35, 0, 1);
+      ctx.fillStyle = this.pal.light ? '#fff6f0' : '#05030f';
+      ctx.fillRect(0, 0, W, H);
+      ctx.globalAlpha = 1;
       const y = w.y ?? H * 0.44;
+      // fit the title on one line
+      let size = w.size || 104;
+      draw.font(ctx, size, 900);
+      const tw = ctx.measureText(w.title).width;
+      if (tw > 980) size = Math.max(56, Math.floor(size * 980 / tw));
       ctx.save();
       ctx.translate(W / 2, y); ctx.scale(s, s);
-      // halo
-      if (!this.pal.light) { ctx.globalCompositeOperation = 'lighter'; draw.glow(ctx, 0, 0, 900, w.color || this.pal.accent, 0.55); ctx.globalCompositeOperation = 'source-over'; }
-      if (w.crown !== false) draw.crown(ctx, 0, -150 + Math.sin(this.clock * 4) * 6, 1.3, '#ffd23f');
-      draw.text(ctx, w.title, 0, -90, { size: w.size || 104, color: w.color || '#ffffff', maxWidth: 1000, stroke: 18, strokeColor: 'rgba(0,0,0,0.6)', shadow: false });
-      if (w.sub) draw.text(ctx, w.sub, 0, 55, { size: 44, color: '#ffffff', weight: 700, stroke: 10, strokeColor: 'rgba(0,0,0,0.55)', shadow: false, maxWidth: 960 });
+      if (!this.pal.light) { ctx.globalCompositeOperation = 'lighter'; draw.glow(ctx, 0, 0, 1000, w.color || this.pal.accent, 0.5); ctx.globalCompositeOperation = 'source-over'; }
+      if (w.crown !== false) draw.crown(ctx, 0, -size * 0.55 - 70 + Math.sin(this.clock * 4) * 6, 1.3, '#ffd23f');
+      draw.text(ctx, w.title, 0, -size * 0.55, { size, color: w.color || '#ffffff', maxWidth: 2000, stroke: 18, strokeColor: 'rgba(0,0,0,0.6)', shadow: false });
+      if (w.sub) draw.text(ctx, w.sub, 0, size * 0.62, { size: 42, color: this.pal.light ? this.pal.text : '#ffffff', weight: 700, stroke: this.pal.light ? 0 : 10, strokeColor: 'rgba(0,0,0,0.55)', shadow: false, maxWidth: 960 });
       ctx.restore();
       const tc = this.textCfg;
-      if (tc.showEnd && tc.endText && this.clock - this.finaleAt > 0.9) {
-        const k2 = clamp((this.clock - this.finaleAt - 0.9) / 0.4, 0, 1);
-        ctx.save(); ctx.globalAlpha = k2; ctx.translate(W / 2, (w.y ?? H * 0.44) + 260); ctx.scale(easeOutBack(k2), easeOutBack(k2));
-        draw.text(ctx, tc.endText, 0, 0, { size: 50, color: '#ffffff', highlight: this.pal.accent, stroke: 10, maxWidth: 900 });
+      if (tc.showEnd && tc.endText && dt > 0.9) {
+        const k2 = clamp((dt - 0.9) / 0.4, 0, 1);
+        ctx.save(); ctx.globalAlpha = k2; ctx.translate(W / 2, y + size * 0.62 + 110); ctx.scale(easeOutBack(k2), easeOutBack(k2));
+        draw.text(ctx, tc.endText, 0, 0, { size: 50, color: this.pal.light ? this.pal.text : '#ffffff', highlight: this.pal.accent, stroke: this.pal.light ? 0 : 10, maxWidth: 900 });
         ctx.restore();
       }
     }

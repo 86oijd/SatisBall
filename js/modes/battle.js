@@ -291,6 +291,7 @@
           if (imp > 0 && oa !== ob) { this.contact(a, b); this.contact(b, a); }
           else if (imp > 80) this.note(0.35, a.x);
         }
+        for (const b of bodies) this.keepInCircle(b, this.cx, this.cy, this.R);
         this.weapons(h);
         for (const b of bodies) { const sp = s.speed * (b.speedMul || 1); if (s.gravity > 0) { if (b.E0 === undefined) P.setEnergy(b, s.gravity); P.lockEnergy(b, s.gravity); } else b.setSpeed(sp); }
       }
@@ -418,6 +419,11 @@
         const d = Math.hypot(t.x - m.x, t.y - m.y);
         if (d < 140 + t.r) { this.damage(t, 13 * (1 - d / (200 + t.r)) + 4, m.owner, t.x, t.y, 'boom'); const k = 1 / (d || 1); t.vx = (t.x - m.x) * k * t.speed; t.vy = (t.y - m.y) * k * t.speed; }
       }
+    }
+    audit() {
+      const v = [];
+      for (const b of this.alive()) if (b.alive !== false && Math.hypot(b.x - this.cx, b.y - this.cy) > this.R - b.r + 2) v.push('ball outside arena');
+      return v;
     }
     forceEnd() { this.dmgMul = this.s.damage * 4; }
 

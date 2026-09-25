@@ -22,6 +22,7 @@
       }
       this.imprints = [];
       this.growMul = 1;
+      this.paceK = this.rng.range(0.78, 0.95); // each run lands at a slightly different moment
       this.done = false;
       this.trailLen = 16;
       this.bounces = 0;
@@ -32,11 +33,6 @@
       const s = this.s, g = this.g;
       const cov = this.coverage();
       g.tension = clamp(cov / s.fill, 0, 1);
-      if (s.assist && g.state === 'play') {
-        const exp = Math.pow(clamp(g.time / (g.targetLen * 0.88), 0, 1), 1.35) * s.fill;
-        if (cov < exp - 0.04) this.growMul = Math.min(6, this.growMul * (1 + dt * 0.9));
-        else if (cov > exp + 0.06) this.growMul = Math.max(0.06, this.growMul * (1 - dt * 1.2));
-      }
       this.w = s.spin;
       this.rot += this.w * dt;
       const n = P.substeps(this.balls, dt, 0.4, 16);
@@ -55,7 +51,10 @@
           const imp = P.ballBall(this.balls[i], this.balls[j], 1);
           if (imp > 60) { this.bounce(this.balls[i], imp * 0.6); this.bounce(this.balls[j], imp * 0.6); }
         }
-        for (const b of this.balls) P.lockEnergy(b, s.gravity);
+        for (const b of this.balls) {
+          if (pts) P.insidePolygon(b, pts, this.cx, this.cy, this.w, 1); else this.keepInCircle(b, this.cx, this.cy, this.R);
+          P.lockEnergy(b, s.gravity);
+        }
       }
       for (const b of this.balls) this.decayBall(b, dt);
       if (!this.done && this.coverage() >= s.fill && g.state === 'play') this.finish();
@@ -69,13 +68,19 @@
       b.hits++; this.bounces++;
       const maxR = this.inR * Math.sqrt(s.fill / this.balls.length) * 1.02;
       const gr = s.growMode === 'percent' ? b.r * s.growth / 100 : s.growth;
-      b.r = Math.min(maxR, b.r + gr * this.growMul);
+      if (s.assist) {
+        // track a coverage schedule: always grow a little, catch up quickly when behind, never outrun it
+        const T = g.targetLen * this.paceK, tt = clamp((g.time + 0.4) / T, 0, 1);
+        const covT = Math.pow(tt, 1.25) * s.fill;
+        const rT = this.inR * Math.sqrt(covT / this.balls.length);
+        b.r = Math.min(maxR, b.r + clamp(rT - b.r, gr * 0.15, gr * 4));
+      } else b.r = Math.min(maxR, b.r + gr);
       b.m = b.r * b.r;
       P.setEnergy(b, s.gravity);
       if (s.colorShift) b.color = gradientAt(this.pal.grad, (this.coverage() / s.fill) * 0.95);
       this.note(this.velFromImpact(imp), b.x);
       this.contactFx(b, C.px, C.py, C.nx, C.ny, imp, b.color);
-      if (s.imprints) { this.imprints.push({ x: b.x, y: b.y, r: b.r, c: b.color }); if (this.imprints.length > 260) this.imprints.shift(); }
+      if (s.imprints) { this.imprints.push({ x: b.x, y: b.y, r: b.r, c: b.color }); if (this.imprints.length > 140) this.imprints.shift(); }
       const pct = Math.floor((this.coverage() / s.fill) * 10);
       if (pct !== this.lastPct) { if (pct >= 9 && this.lastPct < 9) { this.fx.banner('ALMOST FULL!', this.pal.accent, { size: 70, y: 0.5 }); this.snd.sfx('riser', 0.5); } this.lastPct = pct; }
     }
@@ -89,7 +94,12 @@
       }
       g.win({ title: "IT'S FULL!", sub: `${this.bounces} bounces · ${SB.util.fmtTime(g.time)}`, color: '#ffffff', y: 600 });
     }
-    forceEnd() { this.growMul *= 1.02; }
+    audit() {
+      const v = [];
+      for (const b of this.balls) if (b.alive !== false && Math.hypot(b.x - this.cx, b.y - this.cy) > this.R - (this.sides ? 0 : b.r) + 2) v.push('ball outside arena');
+      return v;
+    }
+    forceEnd() { for (const b of this.balls) { b.r = Math.min(this.inR * Math.sqrt(this.s.fill / this.balls.length), b.r + 0.5); b.m = b.r * b.r; } }
     arenaPath(ctx, inset = 0) {
       ctx.beginPath();
       if (!this.sides) { ctx.arc(this.cx, this.cy, this.R + inset, 0, TAU); return; }

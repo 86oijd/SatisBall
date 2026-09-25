@@ -11,7 +11,7 @@ const { chromium } = require('playwright');
   for (const m of modes) {
     const times = [];
     for (let i = 0; i < +n; i++) {
-      const r = await p.evaluate(([m, s]) => SB.test.simulate(m, { seed: s }), [m, 5000 + i * 131]);
+      const r = await p.evaluate(([m, s, tl]) => SB.test.simulate(m, { seed: s, targetLen: tl }), [m, 5000 + i * 131, +(process.env.TL || 35)]);
       times.push(r.finishedAt ? r.finishedAt.toFixed(1) : 'NONE');
       if (!r.finishedAt || r.finishedAt < 15 || r.finishedAt > 60) bad++;
     }

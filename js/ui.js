@@ -127,6 +127,8 @@
         this.frameMs = this.frameMs * 0.9 + (performance.now() - a) * 0.1;
       }
       if (dt > 0) this.fps = this.fps * 0.95 + (1 / dt) * 0.05;
+      // one-time hint if this PC can't keep the live preview at 60 fps (exports are unaffected)
+      if (!this.paused && this.fps < 48 && g.time > 4) { this.slowT = (this.slowT || 0) + dt; if (this.slowT > 4 && !this.slowHinted) { this.slowHinted = true; this.toast('Preview below 60 fps — lower Bloom/Particles in Look. Export MP4 is always a perfect 60 fps.'); } } else this.slowT = 0;
       if ((this._fc = (this._fc || 0) + 1) % 15 === 0) this.$perf.textContent = `${Math.round(this.fps)} fps · ${this.frameMs.toFixed(1)} ms · ${SB.util.fmtTime(g.time)}`;
     }
 

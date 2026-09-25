@@ -58,5 +58,38 @@
     for (let i = 0; i < n; i++) { const b = performance.now(); g.frame(); g.render(); worst = Math.max(worst, performance.now() - b); }
     return { avg: +((performance.now() - a) / n).toFixed(2), worst: +worst.toFixed(2) };
   };
+  /** Simulate a run, render its soundtrack offline and report levels (and optionally a WAV data URL). */
+  T.audio = async (modeId, o = {}) => {
+    const g = makeGame(modeId, o);
+    let f = 0; while (g.state !== 'done' && f < 130 * 60) { g.frame(); f++; }
+    const dur = f / 60;
+    const buf = await SB.engine.renderOffline(g.snd.events, dur);
+    let peak = 0, sum = 0, clip = 0, n = 0;
+    const win = new Float32Array(Math.ceil(buf.length / 4800));
+    for (let c = 0; c < 2; c++) { const d = buf.getChannelData(c); for (let i = 0; i < d.length; i++) { const a = Math.abs(d[i]); if (a > peak) peak = a; if (a > 0.999) clip++; sum += d[i] * d[i]; n++; win[(i / 4800) | 0] = Math.max(win[(i / 4800) | 0], a); } }
+    const silent = Array.from(win).filter((x) => x < 0.01).length;
+    const out = { modeId, dur: +dur.toFixed(1), events: g.snd.events.length, peak: +peak.toFixed(3), rmsDb: +(10 * Math.log10(sum / n)).toFixed(1), clipped: clip, silentTenths: silent };
+    if (o.wav) {
+      const L = buf.getChannelData(0), R = buf.getChannelData(1), len = Math.min(buf.length, (o.wavSecs || 12) * 48000);
+      const ab = new ArrayBuffer(44 + len * 4), v = new DataView(ab);
+      const w = (o2, str) => { for (let i = 0; i < str.length; i++) v.setUint8(o2 + i, str.charCodeAt(i)); };
+      w(0, 'RIFF'); v.setUint32(4, 36 + len * 4, true); w(8, 'WAVE'); w(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 2, true);
+      v.setUint32(24, 48000, true); v.setUint32(28, 48000 * 4, true); v.setUint16(32, 4, true); v.setUint16(34, 16, true); w(36, 'data'); v.setUint32(40, len * 4, true);
+      for (let i = 0; i < len; i++) { v.setInt16(44 + i * 4, Math.max(-1, Math.min(1, L[i])) * 32767, true); v.setInt16(46 + i * 4, Math.max(-1, Math.min(1, R[i])) * 32767, true); }
+      let bin = ''; const u = new Uint8Array(ab); for (let i = 0; i < u.length; i += 0x8000) bin += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000));
+      out.wav = 'data:audio/wav;base64,' + btoa(bin);
+    }
+    return out;
+  };
+  /** Run a mode and collect physics invariant violations each frame + energy drift for locked bouncers. */
+  T.audit = (modeId, o = {}) => {
+    const g = makeGame(modeId, o);
+    const found = {}; let f = 0;
+    while (g.state !== 'done' && f < 130 * 60) {
+      g.frame(); f++;
+      if (g.mode.audit) for (const v of g.mode.audit()) found[v] = (found[v] || 0) + 1;
+    }
+    return { modeId, seed: g.seed, secs: +(f / 60).toFixed(1), violations: found };
+  };
   SB.test = T;
 })(window.SB);

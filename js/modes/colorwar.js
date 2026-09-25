@@ -53,8 +53,10 @@
       if (this.flood >= 0) { this.flood += dt * 1400; this.floodFill(); }
       if (!this.over) {
         const n = P.substeps(this.balls, dt, 0.35, 12), h = dt / n;
-        for (let k = 0; k < n; k++) for (const b of this.balls) this.move(b, h);
-        for (let i = 0; i < this.balls.length; i++) for (let j = i + 1; j < this.balls.length; j++) P.ballBall(this.balls[i], this.balls[j], 1);
+        for (let k = 0; k < n; k++) {
+          for (let i = 0; i < this.balls.length; i++) for (let j = i + 1; j < this.balls.length; j++) P.ballBall(this.balls[i], this.balls[j], 1);
+          for (const b of this.balls) this.move(b, h);
+        }
         for (const b of this.balls) { b.setSpeed(s.speed); this.decayBall(b, dt); }
         // countdown ticks in the last 5 seconds
         const sec = Math.ceil(left);
@@ -123,6 +125,14 @@
         for (const [fx, fy] of this.floodFrom) if (Math.hypot(x - fx, y - fy) < this.flood) { this.grid[i] = W; this.flipT[i] = 1; changed = true; break; }
       }
       if (changed) this.dirty = true;
+    }
+    audit() {
+      const v = [], ts = this.ts;
+      for (const b of this.balls) {
+        const c = Math.floor((b.x - this.x0) / ts), r = Math.floor((b.y - this.y0) / ts);
+        if (c < 0 || r < 0 || c >= this.cols || r >= this.rows) v.push('ball off board');
+      }
+      return v;
     }
     forceEnd() { if (!this.over) this.finish(); }
     render(ctx) {

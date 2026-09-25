@@ -10,7 +10,7 @@
 (function (SB) {
   const W = 1080, H = 1920, FPS = 60, SR = SB.audio.SR;
 
-  async function pickVideo() {
+  async function pickVideo(force) {
     if (!window.VideoEncoder) return null;
     const bitrate = 20_000_000;
     const tries = [
@@ -21,6 +21,7 @@
       { container: 'webm', codec: 'vp09.00.41.08', mux: 'V_VP9' },
       { container: 'webm', codec: 'vp8', mux: 'V_VP8' },
     ];
+    if (force === 'mp4-vp9') tries.unshift({ container: 'mp4', codec: 'vp09.00.41.08', mux: 'vp9' }); // test hook
     for (const t of tries) {
       for (const hw of ['prefer-hardware', 'no-preference']) {
         const cfg = { codec: t.codec, width: W, height: H, bitrate, framerate: FPS, hardwareAcceleration: hw, latencyMode: 'quality' };
@@ -54,7 +55,7 @@
     const maxFrames = Math.round((o.maxSecs || 75) * FPS);
     const progress = o.onProgress || (() => {});
     const cancelled = o.isCancelled || (() => false);
-    const v = await pickVideo();
+    const v = await pickVideo(o.force);
     if (!v) throw new Error('This browser cannot encode video (WebCodecs missing). Use Chrome or Edge, or use Live Record.');
     const a = await pickAudio(v.container);
 
@@ -92,7 +93,7 @@
     if (v.container === 'mp4') {
       muxer = new Mp4Muxer.Muxer({
         target: new Mp4Muxer.ArrayBufferTarget(),
-        video: { codec: 'avc', width: W, height: H, frameRate: FPS },
+        video: { codec: v.mux, width: W, height: H, frameRate: FPS },
         audio: a ? { codec: a.mux, numberOfChannels: 2, sampleRate: SR } : undefined,
         fastStart: 'in-memory', firstTimestampBehavior: 'offset',
       });

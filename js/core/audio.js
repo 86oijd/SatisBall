@@ -129,7 +129,7 @@
       },
     },
     pluck: {
-      name: 'Harp Pluck', gain: 1.0,
+      name: 'Harp Pluck', gain: 1.35,
       render(m) {
         const f = mtof(m);
         const dur = clamp(1.8 * Math.pow(261 / f, 0.3), 0.7, 2.0);
@@ -159,7 +159,7 @@
       },
     },
     synth: {
-      name: 'Neon Synth', gain: 0.62,
+      name: 'Neon Synth', gain: 0.85,
       render(m) {
         const f = mtof(m);
         const dur = 0.85;
@@ -233,7 +233,7 @@
       },
     },
     chip: {
-      name: '8-Bit', gain: 0.45,
+      name: '8-Bit', gain: 0.58,
       render(m) {
         const f = mtof(m);
         const dur = 0.4;

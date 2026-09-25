@@ -87,6 +87,7 @@
         if (s.collide) {
           this.grid.build(this.balls);
           this.grid.pairs(this.balls, (a, b) => P.ballBall(a, b, 1));
+          for (const b of this.balls) this.keepInCircle(b, this.cx, this.cy, this.R);
         }
         for (const b of this.balls) P.lockEnergy(b, s.gravity);
       }
@@ -130,6 +131,11 @@
       for (let i = 0; i < 6; i++) this.fx.ring(this.cx, this.cy, this.pal.grad[i % this.pal.grad.length], 300 + i * 120, 0.8 + i * 0.1, 10);
       this.fx.burst(this.cx, this.cy, '#ffffff', 80, 1400, { colors: this.pal.grad });
       g.win({ title: 'SPIRAL DESTROYED!', size: 84, sub: `${this.balls.length} balls · ${this.hits} hits · ${SB.util.fmtTime(g.time)}`, color: this.pal.accent });
+    }
+    audit() {
+      const v = [];
+      for (const b of this.balls) if (b.alive !== false && Math.hypot(b.x - this.cx, b.y - this.cy) > this.R - b.r + 2) v.push('ball outside arena');
+      return v;
     }
     forceEnd() {
       const sg = this.segs.find((x) => x.alive);

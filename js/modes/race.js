@@ -226,6 +226,7 @@
         this.leader = L;
       }
     }
+    audit() { const v = []; for (const b of this.alive()) { if (b.x < XL - 1 || b.x > XR + 1) v.push('ball through side wall'); if (b.y < TOP - 400) v.push('ball flew out top'); } return v; }
     forceEnd() { const a = this.alive().sort((x, y) => this.progress(x) - this.progress(y)); if (a.length > 1) this.eliminate(a[0]); }
 
     render(ctx) {
