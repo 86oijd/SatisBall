@@ -6,7 +6,7 @@
   --r: 14px;
 }
 * { box-sizing: border-box; }
-html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 500 14px/1.4 'Space Grotesk', system-ui, sans-serif; overflow: hidden; }
+html, body { margin: 0; height: 100%; -webkit-text-size-adjust: 100%; overscroll-behavior: none; background: var(--bg); color: var(--text); font: 500 14px/1.4 'Space Grotesk', system-ui, sans-serif; overflow: hidden; }
 body { background: radial-gradient(1200px 700px at 15% -10%, #2a1170 0%, transparent 60%), radial-gradient(900px 600px at 110% 110%, #5a0f4a 0%, transparent 60%), var(--bg); }
 button { font: inherit; color: inherit; }
 kbd { font: 700 10px 'Space Grotesk', monospace; padding: 1px 5px; border-radius: 5px; background: rgba(255,255,255,0.1); color: var(--muted); margin-left: 6px; }
@@ -175,4 +175,66 @@ body.recmode main, body.recmode .stage-wrap { height: 100vh; padding: 0; }
 body.recmode .stage { border-radius: 0; box-shadow: none; }
 
 @media (max-width: 1250px) { .body { grid-template-columns: 220px 1fr 320px; } .mode-card small { display: none; } .actions kbd { display: none; } }
-@media (max-width: 950px) { .body { grid-template-columns: 1fr; } aside.left, aside.right { display: none; } }
+.warn { color: #ffc46b; font-size: 13px; }
+
+/* ---------------- phones & small tablets ---------------- */
+.mobile-bar, .sheet-head, .sheet-backdrop, .more-menu { display: none; }
+body.mobile { height: 100dvh; }
+body.mobile #app { height: 100dvh; }
+body.mobile .topbar { padding: 8px 12px; padding-top: max(8px, env(safe-area-inset-top)); gap: 10px; }
+body.mobile .brand small, body.mobile .actions, body.mobile .stage-bar, body.mobile kbd { display: none !important; }
+body.mobile .brand b { font-size: 15px; }
+body.mobile .logo { width: 24px; height: 24px; }
+body.mobile .logo i:nth-child(1) { width: 24px; height: 24px; }
+body.mobile .logo i:nth-child(2) { width: 14px; height: 14px; left: 5px; top: 5px; }
+body.mobile .logo i:nth-child(3) { width: 6px; height: 6px; left: 9px; top: 9px; }
+body.mobile .now { flex-direction: column; gap: 0; align-items: flex-end; margin-left: auto; min-width: 0; }
+body.mobile .mode-title { font-size: 13px; overflow: hidden; text-overflow: ellipsis; max-width: 60vw; }
+body.mobile .body { display: block; flex: 1; min-height: 0; padding-bottom: calc(70px + env(safe-area-inset-bottom)); }
+body.mobile main { height: 100%; }
+body.mobile .stage-wrap { height: 100%; padding: 6px; }
+body.mobile .stage { border-radius: 12px; }
+body.mobile .mobile-bar { display: grid; grid-template-columns: repeat(6, 1fr); position: fixed; left: 0; right: 0; bottom: 0; z-index: 35;
+  padding: 6px 4px calc(6px + env(safe-area-inset-bottom)); background: rgba(9,7,28,0.96); border-top: 1px solid var(--line); backdrop-filter: blur(10px); }
+.mb { background: none; border: none; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 4px 0; cursor: pointer; color: var(--text); -webkit-tap-highlight-color: transparent; }
+.mb span { font-size: 20px; line-height: 24px; }
+.mb small { font-size: 10.5px; color: var(--muted); font-weight: 700; }
+.mb.hot span { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.mb:active { transform: scale(0.94); }
+/* modes + settings become bottom sheets */
+body.mobile aside.left, body.mobile aside.right { position: fixed; left: 0; right: 0; bottom: 0; top: 9dvh; z-index: 40; display: flex; flex-direction: column;
+  background: #0d0a26; border: 1px solid var(--line); border-radius: 20px 20px 0 0; padding: 0; transform: translateY(105%); transition: transform .28s cubic-bezier(.2,.8,.2,1); box-shadow: 0 -20px 60px rgba(0,0,0,0.6); }
+body.mobile aside.left { overflow: hidden; }
+body.mobile aside.left .modes { overflow-y: auto; padding: 0 12px calc(16px + env(safe-area-inset-bottom)); flex: 1; }
+body.mobile aside.left .search { margin: 0 12px 10px; width: calc(100% - 24px); }
+body.mobile.sheet-modes aside.left, body.mobile.sheet-panel aside.right { transform: none; }
+body.mobile .sheet-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px 10px; position: relative; }
+body.mobile .sheet-head::before { content: ''; position: absolute; left: 50%; top: 6px; width: 40px; height: 4px; margin-left: -20px; border-radius: 4px; background: rgba(255,255,255,0.25); }
+body.mobile .sheet-head b { font: 800 14px 'Unbounded', sans-serif; }
+body.mobile .panel-body { padding-bottom: calc(24px + env(safe-area-inset-bottom)); -webkit-overflow-scrolling: touch; }
+body.mobile .tabs { position: static; overflow-x: auto; }
+body.mobile .tab { padding: 12px 6px; font-size: 13px; }
+body.mobile.sheet-open .sheet-backdrop { display: block; position: fixed; inset: 0; z-index: 36; background: rgba(0,0,0,0.45); }
+body.mobile .more-menu:not(.hidden) { display: flex; flex-direction: column; position: fixed; right: 10px; bottom: calc(74px + env(safe-area-inset-bottom)); z-index: 41;
+  background: #151038; border: 1px solid var(--line); border-radius: 16px; padding: 6px; min-width: 250px; box-shadow: 0 20px 50px rgba(0,0,0,0.6); }
+.more-menu button { background: none; border: none; text-align: left; padding: 13px 14px; border-radius: 10px; font-weight: 700; cursor: pointer; }
+.more-menu button:active { background: rgba(255,255,255,0.08); }
+/* touch-sized controls; 16px inputs stop iOS from zooming on focus */
+body.mobile input[type=text], body.mobile input[type=number], body.mobile select, body.mobile .search { font-size: 16px; padding: 10px 12px; }
+body.mobile input[type=range] { height: 28px; }
+body.mobile .chip { padding: 9px 14px; font-size: 13.5px; }
+body.mobile .btn { padding: 11px 14px; }
+body.mobile .mode-card { padding: 11px 10px; }
+body.mobile .mode-card small { display: block; }
+body.mobile .toggle i { width: 44px; height: 26px; }
+body.mobile .toggle i::after { width: 20px; height: 20px; }
+body.mobile .toggle input:checked + i::after { transform: translateX(18px); }
+body.mobile .cast, body.mobile .cgrid, body.mobile .mchecks { grid-template-columns: 1fr; }
+body.mobile .modal-card { width: calc(100vw - 20px); max-height: 88dvh; overflow-y: auto; padding: 20px; }
+body.mobile .bitem { grid-template-columns: 22px 1fr; }
+body.mobile .bitem small { grid-column: 1 / -1; }
+body.mobile .toast { max-width: calc(100vw - 24px); text-align: center; }
+body.mobile .splash h1 { font-size: 40px; }
+body.mobile.recmode .mobile-bar { display: none; }
+body.mobile.recmode .body { padding: 0; height: 100dvh; }
+body.mobile.recmode aside { display: none; }

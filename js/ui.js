@@ -102,6 +102,7 @@
     // ------------------------------------------------------------ game lifecycle
     newGame() {
       this.game = new SB.Game(this.gameCfg(this.canvas));
+      if (this.liteBloom) { this.game.look.bloom = Math.min(this.game.look.bloom, 0.25); this.game.look.particles = Math.min(this.game.look.particles, 0.7); }
       this.game.onDone = () => this.onRunDone();
       this.acc = 0;
       this.$seed.textContent = '#' + this.state.run.seed;
@@ -168,7 +169,11 @@
         this.frameMs = this.frameMs * 0.9 + (performance.now() - a) * 0.1;
       }
       if (dt > 0) this.fps = this.fps * 0.95 + (1 / dt) * 0.05;
-      if (!this.paused && this.fps < 48 && g.time > 4) { this.slowT = (this.slowT || 0) + dt; if (this.slowT > 4 && !this.slowHinted) { this.slowHinted = true; this.toast('Preview below 60 fps — lower Bloom/Particles in Look. Exports are always frame-perfect.'); } } else this.slowT = 0;
+      if (!this.paused && this.fps < 48 && g.time > 4 && !document.hidden) {
+        this.slowT = (this.slowT || 0) + dt;
+        if (this.slowT > 4 && this.mobileMQ.matches && this.previewK > 0.42) { this.slowT = 0; this.liteMode(); }
+        else if (this.slowT > 4 && !this.slowHinted) { this.slowHinted = true; this.toast('Preview below 60 fps — lower Bloom/Particles in Look. Exports are always frame-perfect.'); }
+      } else this.slowT = 0;
       if ((this._fc = (this._fc || 0) + 1) % 15 === 0) this.$perf.textContent = `${Math.round(this.fps)} fps · ${this.frameMs.toFixed(1)} ms · ${SB.util.fmtTime(g.time)}`;
     }
 
@@ -176,7 +181,10 @@
     build() {
       const r = this.root;
       r.innerHTML = '';
-      this.canvas = el('canvas', { width: 1080, height: 1920, id: 'view' });
+      // phones render the live preview at reduced resolution (exports always render at full size)
+      this.mobileMQ = window.matchMedia('(max-width: 900px), (pointer: coarse) and (max-width: 1100px)');
+      this.previewK = this.mobileMQ.matches ? 0.6 : 1;
+      this.canvas = el('canvas', { width: Math.round(1080 * this.previewK), height: Math.round(1920 * this.previewK), id: 'view' });
       this.overlay = el('canvas', { width: 1080, height: 1920, id: 'overlay' });
       this.$perf = el('span', { class: 'perf' });
       this.$seed = el('span', { class: 'seed' });
@@ -205,20 +213,64 @@
         el('button', { class: 'chip', onclick: () => this.copyShare() }, '🔗 Copy share code'),
         this.$perf);
       const main = el('main', {}, this.stageWrap, stageBar);
+      // phone layout: bottom action bar + modes/settings as bottom sheets
+      const mb = (icon, label, fn, cls = '') => el('button', { class: 'mb ' + cls, onclick: fn }, el('span', {}, icon), el('small', {}, label));
+      this.$more = el('div', { class: 'more-menu hidden' },
+        el('button', { onclick: () => { this.closeSheets(); this.paused = !this.paused; this.toast(this.paused ? 'Paused' : 'Playing'); } }, '⏯  Pause / play'),
+        el('button', { onclick: () => { this.closeSheets(); this.restart(false); } }, '↻  Restart this run'),
+        el('button', { onclick: () => { this.closeSheets(); this.toggleRecMode(true); } }, '◱  Clean view (for screen recording)'),
+        el('button', { onclick: () => { this.closeSheets(); this.rec ? this.stopLive() : this.startLive(); } }, '●  Record live'),
+        el('button', { onclick: () => { this.closeSheets(); this.copyShare(); } }, '🔗  Copy share code'),
+        el('button', { onclick: () => { this.closeSheets(); this.safe = !this.safe; this.drawOverlay(); } }, '▦  Toggle TikTok safe zones'));
+      const mobileBar = el('nav', { class: 'mobile-bar' },
+        mb('☰', 'Modes', () => this.openSheet('modes')),
+        mb('⚙', 'Settings', () => this.openSheet('panel')),
+        mb('🎲', 'Random', () => { this.closeSheets(); this.randomize(); }),
+        mb('▶', 'New run', () => { this.closeSheets(); this.restart(true); }),
+        mb('⤓', 'Export', () => { this.closeSheets(); this.openExport(); }, 'hot'),
+        mb('⋯', 'More', () => { const open = this.$more.classList.contains('hidden'); this.closeSheets(); if (open) { this.$more.classList.remove('hidden'); document.body.classList.add('sheet-open'); } }));
+      this.$backdrop = el('div', { class: 'sheet-backdrop', onclick: () => this.closeSheets() });
+      const sheetHead = (title) => el('div', { class: 'sheet-head' }, el('b', {}, title), el('button', { class: 'btn mini', onclick: () => this.closeSheets() }, 'Done'));
       this.$splash = el('div', { class: 'splash' },
         el('div', { class: 'splash-card' },
           el('div', { class: 'logo big' }, el('i'), el('i'), el('i')),
           el('h1', {}, 'SATISBALL'),
           el('p', {}, `${SB.modes.list.length} satisfying simulation modes, ready to post.`),
-          el('button', { class: 'btn primary big' }, 'Click to start (sound on)')));
+          el('button', { class: 'btn primary big' }, (this.mobileMQ.matches ? 'Tap' : 'Click') + ' to start (sound on)'),
+          this.mobileMQ.matches ? el('p', { class: 'note' }, 'iPhone: turn the silent switch off to hear the music.') : null));
       this.$splash.addEventListener('click', () => { this.engine.ensure(); this.engine.bank.warmFx(); this.applyEngineOpts(); this.$splash.remove(); this.restart(false); });
-      this.$hint = el('div', { class: 'rec-hint' }, 'Recording mode — press H or Esc to exit');
+      this.$hint = el('div', { class: 'rec-hint' }, this.mobileMQ.matches ? 'Clean view — tap the video to exit' : 'Recording mode — press H or Esc to exit');
       this.$modal = el('div', { class: 'modal hidden' });
-      r.append(top, el('div', { class: 'body' }, el('aside', { class: 'left' }, this.$search, this.$modes), main, el('aside', { class: 'right' }, this.$tabs, this.$panel)), this.$splash, this.$hint, this.$modal);
+      r.append(top, el('div', { class: 'body' }, el('aside', { class: 'left' }, sheetHead('Modes'), this.$search, this.$modes), main, el('aside', { class: 'right' }, sheetHead('Settings'), this.$tabs, this.$panel)), mobileBar, this.$more, this.$backdrop, this.$splash, this.$hint, this.$modal);
+      const syncMobile = () => { document.body.classList.toggle('mobile', this.mobileMQ.matches); this.fit(); };
+      this.mobileMQ.addEventListener ? this.mobileMQ.addEventListener('change', syncMobile) : this.mobileMQ.addListener(syncMobile);
+      document.body.classList.toggle('mobile', this.mobileMQ.matches);
+      // clean view: a tap anywhere brings the UI back (no Esc key on phones)
+      this.stageWrap.addEventListener('click', () => { if (document.body.classList.contains('recmode') && this.mobileMQ.matches) this.toggleRecMode(false); });
       this.tab = this.state.tab || 'mode';
       this.renderModes(); this.renderPanels();
       window.addEventListener('resize', () => this.fit());
       this.fit();
+    }
+    openSheet(which) {
+      const was = document.body.classList.contains('sheet-' + which);
+      this.closeSheets();
+      if (was) return;
+      document.body.classList.add('sheet-' + which, 'sheet-open');
+      if (which === 'panel') this.renderPanels();
+    }
+    closeSheets() {
+      document.body.classList.remove('sheet-modes', 'sheet-panel', 'sheet-open');
+      this.$more.classList.add('hidden');
+    }
+    /** Phones that can't hold ~45 fps drop to a lighter preview once (exports are unaffected). */
+    liteMode() {
+      if (this.previewK <= 0.42) return;
+      this.previewK = 0.4;
+      this.canvas.width = Math.round(1080 * this.previewK); this.canvas.height = Math.round(1920 * this.previewK);
+      this.liteBloom = true;
+      this.newGame();
+      this.toast('Lighter preview enabled for this device — exports stay full quality.');
     }
     fit() {
       const wrap = this.stageWrap;
@@ -253,6 +305,7 @@
       this.state.modeId = id;
       this.renderModes(); this.renderPanels();
       this.restart(true);
+      if (this.mobileMQ.matches) this.closeSheets();
     }
     stepMode(d) {
       const list = this.orderedModes(), i = list.findIndex((m) => m.id === this.state.modeId);
@@ -701,9 +754,12 @@
       const go = el('button', { class: 'btn primary big', disabled: !c.video }, `Render ${c.container === 'webm' ? 'WebM' : 'MP4'}`);
       const cancel = el('button', { class: 'btn' }, 'Close');
       this.modalCard('Export video',
-        el('p', {}, `${this.def.icon} ${this.def.name} · seed #${snap.seed}. The run is re-rendered from the start frame by frame, so the file is perfectly smooth with the full soundtrack. It downloads automatically when done.`),
+        el('p', {}, `${this.def.icon} ${this.def.name} · seed #${snap.seed}. The run is re-rendered from the start frame by frame, so the file is perfectly smooth with the full soundtrack. ${this.mobileMQ.matches ? 'When it finishes you can save it to your photos or share it straight to TikTok.' : 'It downloads automatically when done.'}`),
         el('p', { class: 'muted' }, c.video ? `${o.width}×${o.height} · ${o.fps} fps · ${c.video.startsWith('avc') ? 'H.264' : c.video} · ${c.audio ? (c.audio.startsWith('mp4a') ? 'AAC' : 'Opus') : 'no audio'}${o.limit ? ` · cut at ${o.limit}s` : ''} — change in the Export tab` : 'This browser cannot export frame-perfect video. Use Chrome or Edge, or Record live.'),
+        c.video && !c.audio ? el('p', { class: 'warn' }, 'This browser can encode video but not audio, so the export would be silent. For sound on this device use ⋯ → Record live, or export on a PC with Chrome/Edge.') : null,
+        this.mobileMQ.matches ? el('p', { class: 'muted' }, 'Keep this screen open while it renders — phones pause background tabs.') : null,
         bar, status, el('div', { class: 'row' }, go, cancel));
+      const row = go.parentNode;
       let cancelled = false;
       cancel.onclick = () => { cancelled = true; if (!this.exporting) this.$modal.classList.add('hidden'); };
       go.onclick = async () => {
@@ -716,9 +772,18 @@
             isCancelled: () => cancelled,
           }));
           const name = this.fileName(snap, res.ext);
-          SB.recorder.download(res.blob, name);
           SB.library.history.push({ snap, at: Date.now(), secs: +res.duration.toFixed(1), title: res.winner || '' });
-          status.textContent = `Saved ${name} · ${res.duration.toFixed(1)}s · ${(res.blob.size / 1e6).toFixed(1)} MB`;
+          const file = window.File ? new File([res.blob], name, { type: res.blob.type }) : null;
+          if (file && navigator.canShare && navigator.canShare({ files: [file] }) && this.mobileMQ.matches) {
+            // phones: the share sheet can save straight to Photos or post to TikTok
+            status.textContent = `Ready · ${res.duration.toFixed(1)}s · ${(res.blob.size / 1e6).toFixed(1)} MB`;
+            const share = el('button', { class: 'btn primary big', onclick: () => navigator.share({ files: [file], title: 'SatisBall' }).catch(() => {}) }, '📤 Save / share video');
+            const dl = el('button', { class: 'btn', onclick: () => SB.recorder.download(res.blob, name) }, 'Download file');
+            row.prepend(share, dl); go.remove();
+          } else {
+            SB.recorder.download(res.blob, name);
+            status.textContent = `Saved ${name} · ${res.duration.toFixed(1)}s · ${(res.blob.size / 1e6).toFixed(1)} MB`;
+          }
         } catch (e) {
           status.textContent = e.message === 'cancelled' ? 'Cancelled.' : 'Export failed: ' + e.message;
           if (e.message !== 'cancelled') console.error(e);
@@ -795,7 +860,7 @@
     }
     toast(msg) {
       const live = [...document.querySelectorAll('.toast')];
-      const t = el('div', { class: 'toast', style: `bottom:${24 + live.length * 58}px` }, msg);
+      const t = el('div', { class: 'toast', style: `bottom:calc(${(this.mobileMQ && this.mobileMQ.matches ? 84 : 24) + live.length * 58}px + env(safe-area-inset-bottom))` }, msg);
       document.body.append(t);
       setTimeout(() => t.classList.add('show'), 10);
       setTimeout(() => { t.classList.remove('show'); setTimeout(() => t.remove(), 400); }, 3200);

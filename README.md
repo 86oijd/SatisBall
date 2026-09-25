@@ -18,6 +18,27 @@ There's nothing to install, no server to run and no internet needed. The fonts a
 
 Use Edge or Chrome. The frame-perfect export uses WebCodecs, which both of them support. Firefox can preview and live-record.
 
+## Run it on a phone
+
+Phones can't open a local `index.html` with its scripts (iPhone's Files app only shows a preview, and Android blocks the sibling files). So the studio needs to be served from a URL:
+
+1. **GitHub Pages (free, one-time setup):**
+   1. In the repository go to **Settings → Pages → Build and deployment → Source** and choose **GitHub Actions**.
+   2. The included workflow (`.github/workflows/pages.yml`) then publishes the site on every push. Re-run it once from the **Actions** tab to deploy straight away.
+   3. Open `https://<your-username>.github.io/<repo>/` on your phone.
+   4. Use **Share → Add to Home Screen** to make it a full-screen app.
+2. **Or from your PC on the same Wi-Fi:** run `python -m http.server 8000` in this folder, then open `http://<your-PC's-IP>:8000` on the phone.
+
+The phone layout has:
+- a bottom bar: **Modes · Settings · Random · New run · Export · More**
+- modes and settings as swipe-up sheets
+- a lighter live preview. It steps down automatically on slow phones; exports always render at full quality.
+
+After an export, **📤 Save / share video** opens the phone's share sheet, so you can save to Photos or post straight to TikTok.
+- **Android Chrome:** exports with sound.
+- **iPhone Safari:** can encode video, but some iOS versions can't encode audio. In that case the app warns you before rendering; use **More → Record live** for a clip with sound, or export on a PC.
+- **iPhone sound:** turn the silent switch off.
+
 ## Make a video
 
 | Step | How |
@@ -155,6 +176,7 @@ node tools/audio.cjs        # offline-render soundtracks: peak / loudness / clip
 node tools/export.cjs rings out.mp4 35   # full export (env OPTS='{"width":720,"height":1280,"fps":30}')
 python3 tools/mp4info.py out.mp4         # frame count / duration / size of an exported MP4
 node tools/uitest.cjs .     # drives every mode x tab, library, share codes, replay, export options
+node tools/mobile.cjs .     # iPhone-sized touch emulation: bottom bar, sheets, clean view, export modal
 ```
 
 ## Licences
