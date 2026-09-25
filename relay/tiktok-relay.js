@@ -12,6 +12,8 @@
  *   POST /refresh {refresh_token}     -> fresh access token
  *   POST /api/<path>  (X-TikTok-Token)-> forwards a Content Posting API call to open.tiktokapis.com/v2/<path>
  *   PUT  /upload?url=<upload_url>     -> forwards a video chunk to TikTok's upload host
+ *   GET  /selftest                    -> checks your key/secret against TikTok (client-credentials token) and the config
+ *   POST /api/user/info/              -> the connected account's display name (to confirm who you're posting as)
  */
 const API = 'https://open.tiktokapis.com/v2/';
 const SCOPES = 'user.info.basic,video.upload,video.publish';
@@ -57,6 +59,15 @@ export async function handle(req, env) {
   if (req.method === 'OPTIONS') return cors(env, req, new Response(null, { status: 204 }));
   if (!env.TIKTOK_CLIENT_KEY || !env.TIKTOK_CLIENT_SECRET) return jsonRes({ error: 'relay not configured: set TIKTOK_CLIENT_KEY and TIKTOK_CLIENT_SECRET' }, 500);
 
+  if (url.pathname === '/tiktok/selftest' && req.method === 'GET') {
+    // proves the relay can reach TikTok and that the key/secret are real, without needing a user login
+    let tiktok;
+    try { const t = await tokenCall(env, { grant_type: 'client_credentials' }); tiktok = t.access_token ? 'credentials accepted by TikTok' : `TikTok rejected the credentials: ${t.error_description || t.error || JSON.stringify(t)}`; }
+    catch (e) { tiktok = 'could not reach TikTok: ' + e.message; }
+    const origins = String(env.ALLOWED_ORIGINS || '').split(',').map((x) => x.trim()).filter(Boolean);
+    return cors(env, req, jsonRes({ ok: /accepted/.test(tiktok), tiktok, redirect_uri: redirectUri, allowed_origins: origins, caller_allowed: allowed(env, req.headers.get('Origin')) }));
+  }
+
   if (url.pathname === '/tiktok/login' && req.method === 'GET') {
     const back = url.searchParams.get('return') || '';
     let origin = ''; try { origin = new URL(back).origin; } catch (e) { /* invalid */ }
@@ -89,6 +100,11 @@ export async function handle(req, env) {
     if (!refresh_token) return cors(env, req, jsonRes({ error: 'missing refresh_token' }, 400));
     const t = await tokenCall(env, { grant_type: 'refresh_token', refresh_token });
     return cors(env, req, jsonRes(t, t.access_token ? 200 : 400));
+  }
+
+  if (url.pathname === '/tiktok/api/user/info/' && req.method === 'POST') {
+    const r = await fetch(API + 'user/info/?fields=open_id,display_name,avatar_url', { headers: { Authorization: 'Bearer ' + req.headers.get('X-TikTok-Token') } });
+    return cors(env, req, new Response(await r.text(), { status: r.status, headers: { 'Content-Type': 'application/json' } }));
   }
 
   if (url.pathname.startsWith('/tiktok/api/') && req.method === 'POST') {

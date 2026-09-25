@@ -43,7 +43,7 @@
       title: '{hook} #shorts', desc: '{hook}\n\n{winner}\nComment who you picked 👇\n\n{hashtags}', ttCaption: '{hook} {hashtags}',
       hashtags: '#satisfying #oddlysatisfying #simulation #shorts',
       yt: { auto: false, clientId: '', privacy: 'public', category: '24', madeForKids: false, schedule: false, startAt: '', every: 4, nextAt: 0 },
-      tt: { auto: false, relay: '', mode: 'inbox', privacy: '', comments: true, duet: true, stitch: true, consent: false },
+      tt: { auto: false, relay: '', mode: 'inbox', privacy: '', comments: true, duet: true, stitch: true, consent: false, allowWebm: false },
     },
     tab: 'mode',
   });
@@ -640,7 +640,10 @@
         el('div', { class: 'row' },
           el('button', { class: 'btn ' + (ytOk ? '' : 'primary'), onclick: () => yt.connect(Y.clientId).then(() => { this.toast('YouTube connected'); this.renderPanels(); }, (e) => this.toast(e.message)) }, ytOk ? '↻ Reconnect' : 'Connect YouTube'),
           ytOk ? el('button', { class: 'btn', onclick: () => { yt.disconnect(); this.renderPanels(); } }, 'Disconnect') : null,
-          el('span', { class: 'note' }, ytOk ? `connected · ${Math.max(0, Math.round((yt.expires - Date.now()) / 60e3))} min left` : 'not connected')),
+          el('span', { class: 'note' }, ytOk ? `connected${this.ytWho ? ' as ' + this.ytWho : ''} · ${Math.max(0, Math.round((yt.expires - Date.now()) / 60e3))} min left` : 'not connected')),
+        ytOk ? el('div', { class: 'row' },
+          el('button', { class: 'btn', onclick: () => yt.verify().then((v) => { this.ytWho = v.email || ''; this.toast('✓ Google confirms: upload permission granted' + (v.email ? ' for ' + v.email : '')); this.renderPanels(); }, (e) => this.toast(e.message)) }, '✓ Check with Google'),
+          el('button', { class: 'btn', onclick: () => this.testUpload('yt') }, '↑ Test upload (3s, private)')) : null,
         this.ctlToggle('Upload automatically after every export (and batch)', Y.auto, (v) => { Y.auto = v; save(); }),
         this.ctlSelect('Visibility', Y.privacy, [['public', 'Public'], ['unlisted', 'Unlisted'], ['private', 'Private']], (v) => { Y.privacy = v; save(); }),
         this.ctlToggle('Schedule instead of posting now', Y.schedule, (v) => { Y.schedule = v; save(true); }),
@@ -662,12 +665,17 @@
           el('button', { class: 'btn ' + (ttOk ? '' : 'primary'), onclick: () => { try { tt.connect(T.relay); } catch (e) { this.toast(e.message); } } }, ttOk ? '↻ Reconnect' : 'Connect TikTok'),
           ttOk ? el('button', { class: 'btn', onclick: () => { tt.disconnect(); this.renderPanels(); } }, 'Disconnect') : null,
           ttOk && T.mode === 'direct' ? el('button', { class: 'btn', onclick: () => tt.creatorInfo(T.relay).then(() => this.renderPanels(), (e) => this.toast(e.message)) }, 'Load account') : null,
-          el('span', { class: 'note' }, ttOk ? (cr ? `@${cr.creator_username || cr.creator_nickname}` : 'connected') : 'not connected')),
+          el('span', { class: 'note' }, ttOk ? (cr ? `@${cr.creator_username || cr.creator_nickname}` : tt.user ? tt.user.display_name : 'connected') : 'not connected')),
+        el('div', { class: 'row' },
+          T.relay ? el('button', { class: 'btn', onclick: () => tt.selftest(T.relay).then((j) => this.toast((j.ok ? '✓ ' : '✕ ') + j.tiktok + (j.caller_allowed ? '' : ' · this page\'s address is NOT in ALLOWED_ORIGINS'))) .catch((e) => this.toast('Relay check failed: ' + e.message)) }, '✓ Check relay') : null,
+          ttOk ? el('button', { class: 'btn', onclick: () => tt.userInfo(T.relay).then((u) => { this.toast('✓ TikTok confirms: ' + (u.display_name || 'account connected')); this.renderPanels(); }, (e) => this.toast(e.message)) }, '✓ Check account') : null,
+          ttOk ? el('button', { class: 'btn', onclick: () => this.testUpload('tt') }, T.mode === 'direct' ? '↑ Test post (3s)' : '↑ Test draft (3s)') : null),
         this.ctlSelect('How to post', T.mode, [['inbox', 'Send to TikTok inbox as a draft (finish posting in the app)'], ['direct', 'Post directly (needs an audited TikTok app)']], (v) => { T.mode = v; save(true); }),
         T.mode === 'direct' ? this.ctlSelect('Who can see it (you must choose)', T.privacy, [['', '— choose —']].concat(privOpts.map((o) => [o, privName[o] || o])), (v) => { T.privacy = v; save(); }) : null,
         T.mode === 'direct' ? el('div', { class: 'row' }, this.ctlToggle('Comments', T.comments, (v) => { T.comments = v; save(); }), this.ctlToggle('Duet', T.duet, (v) => { T.duet = v; save(); }), this.ctlToggle('Stitch', T.stitch, (v) => { T.stitch = v; save(); })) : null,
         T.mode === 'direct' ? this.ctlToggle("I agree to TikTok's Music Usage Confirmation", T.consent, (v) => { T.consent = v; save(); }) : null,
         this.ctlToggle('Send automatically after every export (and batch)', T.auto, (v) => { T.auto = v; save(); }),
+        this.ctlToggle('Allow WebM files (only if your browser can\'t make MP4)', T.allowWebm, (v) => { T.allowWebm = v; save(); }),
         T.mode === 'direct' ? el('p', { class: 'warn' }, 'Until TikTok audits your app, direct posts can only be "Only me". Inbox drafts work for everyone and are the safest way to automate.') : null);
       // captions
       const ta = (label, key, rows) => el('div', { class: 'ctl' }, el('label', {}, el('span', {}, label)), el('textarea', { rows, oninput: (e) => { P[key] = e.target.value; save(); } }, P[key]));
@@ -692,6 +700,24 @@
           it.state === 'done' && it.result && it.result.url ? el('a', { class: 'btn mini', href: it.result.url, target: '_blank', rel: 'noopener' }, '↗') : null));
       }
     }
+    /** Renders a real 3-second clip of the current run and uploads it (YouTube: private, TikTok: per settings). */
+    async testUpload(which) {
+      if (this.exporting) return;
+      const snap = this.snapshot(), P = this.state.publish;
+      this.toast('Rendering a 3-second test clip…');
+      this.exporting = true;
+      try {
+        const res = await SB.recorder.exportRun(this.cfgFrom(snap, null, 'capture'), { width: 720, height: 1280, fps: 30, limit: 3, maxSecs: 3 });
+        const name = 'satisball_test.' + res.ext;
+        if (which === 'yt') {
+          const meta = SB.publish.youtube.metadata(snap, res, P, null);
+          meta.snippet.title = 'SatisBall test upload #shorts'; meta.status.privacyStatus = 'private'; delete meta.status.publishAt;
+          this.queue.add({ icon: '▶', label: 'YouTube test (private)', run: (onP) => SB.publish.youtube.upload(res.blob, meta, onP), doneText: (r) => `uploaded to your channel as ${r.privacy} — open ↗ to see it` });
+        } else this.enqueueTikTok(res, snap, name);
+        this.toast('Test clip rendered — uploading (see Upload queue)');
+      } catch (e) { this.toast('Test failed: ' + e.message); }
+      this.exporting = false;
+    }
     /** Next YouTube schedule slot (ms); advance=true consumes it. */
     nextSlot(advance = true) {
       const Y = this.state.publish.yt, every = Y.every * 3600e3;
@@ -715,7 +741,7 @@
         icon: '♪', label: `TikTok ${P.tt.mode === 'direct' ? 'post' : 'draft'} · ${caption.slice(0, 60)}`,
         run: async (onP) => {
           if (P.tt.mode === 'direct' && !P.tt.consent) throw new Error("tick TikTok's Music Usage Confirmation first");
-          const r = await tt.upload(P.tt.relay, res.blob, P, caption, onP);
+          const r = await tt.upload(P.tt.relay, res.blob, P, caption, onP, res.duration);
           for (let i = 0; i < 6; i++) { // brief status check so failures are visible
             await new Promise((ok) => setTimeout(ok, 2500));
             const st = await tt.status(P.tt.relay, r.publish_id).catch(() => null);

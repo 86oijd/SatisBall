@@ -33,7 +33,7 @@ const http = require('http'), fs = require('fs'), path = require('path');
   await p.evaluate(() => {
     const a = SB.app; a.state.run.targetLen = 15; Object.assign(a.state.export, { res: 720, fps: 30 });
     Object.assign(a.state.publish.yt, { auto: true, clientId: 'test.apps.googleusercontent.com', schedule: true, startAt: '', every: 3, nextAt: 0 });
-    Object.assign(a.state.publish.tt, { auto: true, relay: 'https://relay.test', mode: 'inbox' });
+    Object.assign(a.state.publish.tt, { auto: true, relay: 'https://relay.test', mode: 'inbox', allowWebm: true }); // headless Chromium can only make WebM
     SB.publish.tiktok.setTokens({ access_token: 'TT', refresh_token: 'RT', expires_in: 86400, refresh_expires_in: 1e7 });
     a.selectMode('chain'); a.tab = 'export'; a.renderPanels();
   });
@@ -56,6 +56,8 @@ const http = require('http'), fs = require('fs'), path = require('path');
   ok(seen.ttPuts.length === 1 && seen.ttPuts[0][0] === `bytes 0-${seen.ytPut - 1}/${seen.ytPut}`, 'TikTok chunk range ' + JSON.stringify(seen.ttPuts));
   const ch = await p.evaluate(() => [SB.publish.tiktok.chunks(150 * 1048576), SB.publish.tiktok.chunks(3e6)]);
   ok(ch[0].count === 7 && ch[0].chunk === 20 * 1048576 && ch[1].count === 1, 'chunking rules ' + JSON.stringify(ch));
+  const fmt = await p.evaluate(() => SB.publish.tiktok.upload('https://relay.test', new Blob(['x'], { type: 'video/webm' }), { tt: { mode: 'inbox', allowWebm: false } }, 'c').then(() => 'accepted', (e) => e.message));
+  ok(/MP4/.test(fmt), 'WebM refused for TikTok by default: ' + fmt);
   console.log('YouTube title:', seen.ytMeta && seen.ytMeta.snippet.title);
   console.log(fails.length ? 'FAILED:\n  ' + fails.join('\n  ') : 'all publishing checks passed');
   console.log(errs.length ? 'ERRORS ' + errs.join('\n') : 'no errors');

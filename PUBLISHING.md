@@ -46,6 +46,22 @@ TikTok's Content Posting API needs two things:
      - **Send to TikTok inbox as a draft** (default): the video lands in your TikTok app's inbox and you tap post. This works without an audit and follows TikTok's rules for automation.
      - **Post directly**: posts straight to your profile. Until TikTok *audits* your app, direct posts can only be **Only me**. TikTok also requires you to pick the visibility yourself and agree to its Music Usage Confirmation. The studio asks for both.
 
+## Checking it's really working (real accounts, no guessing)
+
+Each check below talks to the real Google / TikTok servers:
+
+| Button (Export tab) | What it proves |
+|---|---|
+| **✓ Check with Google** | Google validates your sign-in token for this client ID and confirms the `youtube.upload` permission and the account email |
+| **↑ Test upload (3s, private)** | renders a real 3-second clip and uploads it to your channel as private. The upload queue shows ↗ linking to it |
+| **✓ Check relay** | the relay asks TikTok for an app token with your key/secret. It reports "credentials accepted by TikTok", or TikTok's exact error. It also says whether this page's address is in `ALLOWED_ORIGINS` |
+| **✓ Check account** | TikTok returns the display name of the account you connected |
+| **↑ Test draft (3s)** | uploads a real 3-second clip; it appears in your TikTok inbox. The queue waits for TikTok's own status (`SEND_TO_USER_INBOX`, or `PUBLISH_COMPLETE` for direct posts) |
+
+If something fails, the message is the platform's own error text (bad client ID, origin not authorised, quota, TikTok app not approved yet, etc.).
+
+**Video format.** TikTok recommends MP4 with H.264. Chrome and Edge on Windows export exactly that. If your browser falls back to WebM, the studio won't send it to TikTok unless you tick **Allow WebM**. YouTube accepts both.
+
 ## Captions
 
 **Export → Titles, captions & hashtags** has templates for the YouTube title, the YouTube description and the TikTok caption. They can use these placeholders:

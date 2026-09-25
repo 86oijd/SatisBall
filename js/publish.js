@@ -9,6 +9,7 @@
 'use strict';
 (function (SB) {
   const TT_KEY = 'satisball.tiktok.v1';
+  const YT_UPLOAD = 'https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status';
 
   // ------------------------------------------------------------------ captions
   const plainHook = (h) => String(h || '').replace(/\*/g, '').replace(/\s+/g, ' ').trim();
@@ -81,15 +82,26 @@
         status,
       };
     },
+    /** Real check with Google: is the token valid, for this client, with the upload scope? */
+    async verify() {
+      const r = await fetch('https://www.googleapis.com/oauth2/v3/tokeninfo?access_token=' + encodeURIComponent(this.token));
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error('Google says the sign-in is invalid: ' + (j.error_description || r.status));
+      if (!String(j.scope || '').includes('youtube.upload')) throw new Error('signed in, but without YouTube upload permission — reconnect and allow it');
+      return { email: j.email, expiresIn: +j.expires_in, scope: j.scope };
+    },
     async upload(blob, meta, onProgress) {
       if (!this.connected()) throw new Error('YouTube sign-in expired — press Connect YouTube again');
-      const init = await xhr('POST', 'https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status', {
+      const init = await xhr('POST', YT_UPLOAD, {
         headers: { Authorization: 'Bearer ' + this.token, 'Content-Type': 'application/json; charset=UTF-8', 'X-Upload-Content-Type': blob.type || 'video/mp4' },
         body: JSON.stringify(meta),
       });
       if (init.status >= 300) throw new Error(ytError(init));
-      const url = init.header('Location');
-      if (!url) throw new Error('YouTube did not return an upload URL');
+      // browsers may not expose Location cross-origin; the session URL is the same endpoint + upload_id,
+      // and X-GUploader-UploadID is always exposed
+      const uid = init.header('X-GUploader-UploadID');
+      const url = init.header('Location') || (uid ? `${YT_UPLOAD}&upload_id=${encodeURIComponent(uid)}` : '');
+      if (!url) throw new Error('YouTube did not return an upload session');
       const put = await xhr('PUT', url, { headers: { 'Content-Type': blob.type || 'video/mp4' }, body: blob, onProgress });
       if (put.status >= 300) throw new Error(ytError(put));
       const v = json(put.text) || {};
@@ -149,12 +161,25 @@
     },
     /** Creator info (nickname, allowed privacy levels, max duration) — required before a direct post. */
     async creatorInfo(relay) { this.creator = await this.api(relay, 'post/publish/creator_info/query/', {}); return this.creator; },
+    async userInfo(relay) { const d = await this.api(relay, 'user/info/', {}); this.user = d.user || d; return this.user; },
+    async selftest(relay) {
+      const r = await fetch(`${this.relayBase(relay)}/tiktok/selftest`);
+      const j = await r.json().catch(() => null);
+      if (!j) throw new Error(`relay did not answer (${r.status}) — check the URL`);
+      return j;
+    },
     chunks(size) {
       const MB = 1024 * 1024;
       if (size <= 64 * MB) return { chunk: size, count: 1 };
       const chunk = 20 * MB; return { chunk, count: Math.floor(size / chunk) }; // the last chunk absorbs the remainder
     },
-    async upload(relay, blob, cfg, caption, onProgress) {
+    async upload(relay, blob, cfg, caption, onProgress, secs) {
+      if (!/mp4|quicktime/.test(blob.type) && !cfg.tt.allowWebm) throw new Error('TikTok wants MP4 (H.264). This browser exported WebM — export in Chrome/Edge on a PC, or allow WebM in the TikTok settings');
+      if (cfg.tt.mode === 'direct') {
+        const cr = this.creator || await this.creatorInfo(relay);
+        if (cr.max_video_post_duration_sec && secs > cr.max_video_post_duration_sec) throw new Error(`video is ${Math.round(secs)}s — this account can post up to ${cr.max_video_post_duration_sec}s`);
+        if (cr.privacy_level_options && !cr.privacy_level_options.includes(cfg.tt.privacy)) throw new Error(`"${cfg.tt.privacy}" isn't allowed for this account (allowed: ${cr.privacy_level_options.join(', ')})`);
+      }
       const { chunk, count } = this.chunks(blob.size);
       const source_info = { source: 'FILE_UPLOAD', video_size: blob.size, chunk_size: chunk, total_chunk_count: count };
       let data;
