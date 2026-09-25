@@ -78,14 +78,14 @@
       level(f, lv) { f.cloneMax = 1 + lv; f.cloneEvery = 3.4 - lv * 0.35; },
       update(f, dt) {
         f.cloneT -= dt;
-        if (f.cloneT <= 0) { f.cloneT = f.cloneEvery; if (f.brawl.minions.filter((q) => q.owner === f && q.alive).length < f.cloneMax) f.brawl.spawnMinion(f); }
+        if (f.cloneT <= 0 && !f.brawl.sudden) { f.cloneT = f.cloneEvery; if (f.brawl.minions.filter((q) => q.owner === f && q.alive).length < f.cloneMax) f.brawl.spawnMinion(f); }
       },
       contact: 5,
     },
     archer: {
       name: 'ARCHER', desc: 'More arrows per hit',
       init(f) { f.shotT = 0.8; f.volley = 1; f.volleyMax = 5; },
-      level(f, lv) { f.volley = Math.max(f.volley, Math.ceil(lv / 2)); f.volleyMax = 2 + lv; },
+      level(f, lv) { f.volley = Math.max(f.volley, Math.ceil(lv / 2)); f.volleyMax = 3 + Math.ceil(lv / 2); },
       update(f, dt) { f.shotT -= dt; if (f.shotT <= 0) { f.shotT = 1.3; f.brawl.fireVolley(f); } },
       onHit(f) { f.arrowHits = (f.arrowHits || 0) + 1; if (f.arrowHits % 2 === 0) f.volley = Math.min(f.volleyMax, f.volley + 1); },
       contact: 3,
@@ -146,7 +146,12 @@
       update(f, dt) {
         const B = f.brawl;
         if (f.lzState === 0) { f.lzT -= dt; if (f.lzT <= 0) { const t = B.nearestEnemy(f); if (t) { f.lzState = 1; f.lzT = 0.45; f.lzA = Math.atan2(t.y - f.y, t.x - f.x); B.snd.sfx('charge', 0.45, B.g.pan(f.x), 1.6); } else f.lzT = 0.5; } }
-        else if (f.lzState === 1) { f.lzT -= dt; if (f.lzT <= 0) { f.lzState = 2; f.lzT = 0.16; B.fireLaser(f); } }
+        else if (f.lzState === 1) {
+          // the telegraph tracks its target (limited turn rate) so a dodge is still possible
+          const t = B.nearestEnemy(f);
+          if (t) { const want = Math.atan2(t.y - f.y, t.x - f.x), d = angleDiff(f.lzA, want), turn = 2.6 * dt; f.lzA += clamp(d, -turn, turn); }
+          f.lzT -= dt; if (f.lzT <= 0) { f.lzState = 2; f.lzT = 0.16; B.fireLaser(f); }
+        }
         else { f.lzT -= dt; if (f.lzT <= 0) { f.lzState = 0; f.lzT = f.lzEvery; } }
       },
       contact: 4,
@@ -163,7 +168,7 @@
           let healed = false;
           for (const q of mates) {
             if (Math.hypot(q.x - f.x, q.y - f.y) > 320) continue;
-            const amt = q === f ? (mates.length > 1 ? 3 : 6) : f.healAmt;
+            const amt = Math.ceil((q === f ? (mates.length > 1 ? 3 : 6) : f.healAmt) * (B.sudden ? 0.4 : 1));
             if (q.hp < q.maxHp) { q.hp = Math.min(q.maxHp, q.hp + amt); B.fx.popup(q.x, q.y - q.r - 30, '+' + amt, '#7dff9a', 36); healed = true; }
           }
           if (healed) { B.fx.ring(f.x, f.y, '#7dff9a', 320, 0.5, 6); B.snd.sfx('heal', 0.4, B.g.pan(f.x)); }
@@ -283,12 +288,14 @@
       const attacker = src ? this.owner(src) : null;
       let crit = false;
       if (this.crits && !o.noCrit && kind !== 'boom' && this.rng.chance(0.1)) { crit = true; amount *= 1.8; }
-      amount = Math.max(1, Math.round(amount * this.dmgMul * (this.sudden ? 1.6 : 1) * (o.mul || 1)));
+      const mf = this.mulFor ? this.mulFor(target, attacker) : 1;
+      if (mf <= 0) return 0;
+      amount = Math.max(1, Math.round(amount * this.dmgMul * (this.sudden ? 1.6 : 1) * (o.mul || 1) * mf));
       target.hp -= amount;
       target.flash = 1; target.hitT = 0.25;
       if (attacker) attacker.dealt += amount;
       const big = amount >= 10 || crit;
-      this.fx.popup(target.x + this.rng.range(-20, 20), target.y - target.r - 10, (crit ? 'CRIT -' : '-') + amount, crit ? '#ffd23f' : '#ffffff', big ? 54 : 42);
+      if (amount > 1 || crit) this.fx.popup(target.x + this.rng.range(-20, 20), target.y - target.r - 10, (crit ? 'CRIT -' : '-') + amount, crit ? '#ffd23f' : '#ffffff', big ? 54 : 42);
       this.fx.burst(x ?? target.x, y ?? target.y, target.color, big ? 16 : 9, 600, { grav: 0 });
       const pan = this.g.pan(target.x);
       if (kind === 'blade') this.snd.sfx('blade', 0.7, pan, 1 + this.rng.range(-0.1, 0.1));
@@ -299,10 +306,16 @@
       if (crit) { this.fx.flare(x ?? target.x, y ?? target.y, '#ffd23f', 600); this.g.hitstop(0.05); }
       else if (big && !target.owner) this.g.hitstop(0.035);
       // combos
-      if (attacker && this.combos && !attacker.owner) {
+      if (attacker && this.combos && !attacker.owner && !attacker.boss) {
         if (this.g.time - attacker.comboT < 1.1) attacker.combo++; else attacker.combo = 1;
         attacker.comboT = this.g.time;
-        if (attacker.combo >= 3) this.fx.popup(attacker.x, attacker.y - attacker.r - 60, attacker.combo + 'x COMBO', attacker.color, 34 + Math.min(20, attacker.combo * 3));
+        // only milestone combos, and never more than one callout on screen at a time
+        const c = attacker.combo;
+        if ((c === 3 || c === 5 || c === 8 || (c >= 12 && c % 4 === 0)) && this.g.clock - (this.comboPopT ?? -9) > 0.7) {
+          this.comboPopT = this.g.clock;
+          this.fx.popup(attacker.x, attacker.y - attacker.r - 60, c + 'x COMBO', attacker.color, 34 + Math.min(20, c * 2));
+          if (c >= 8) this.snd.sfx('shimmer', 0.3, this.g.pan(attacker.x), 1.3);
+        }
       }
       if (attacker && attacker.A && attacker.A.contact !== undefined && attacker.ab === 'vampire' && attacker.alive) {
         const heal = Math.max(1, Math.round(amount * (attacker.steal || 0.5)));
@@ -359,6 +372,8 @@
         }
       }
       this.projectiles(dt);
+      // sudden death: minions fade out so they can't body-block a finish forever
+      if (this.sudden) for (const q of this.minions) if (q.alive) { q.hp -= dt * 3; if (q.hp <= 0) this.kill(q); }
       for (const b of bodies) {
         this.m.decayBall(b, dt);
         if (b.hitT) b.hitT = Math.max(0, b.hitT - dt);
@@ -536,7 +551,7 @@
         if (f.slowT > 0) { ctx.globalAlpha = 0.5; ctx.fillStyle = '#bff4ff'; ctx.beginPath(); ctx.arc(f.x, f.y, f.r + 4, 0, TAU); ctx.fill(); ctx.globalAlpha = 1; }
         if (o.drawFighter) o.drawFighter(ctx, f); else draw.ball(ctx, f, look);
         if (f.A.over) f.A.over(ctx, f);
-        if (o.hp !== false && this.hpStyle !== 'none') {
+        if (o.hp !== false && this.hpStyle !== 'none' && !(f.boss && o.noBossHp)) {
           const hp = String(Math.max(0, Math.ceil(f.hp)));
           draw.label(ctx, hp, f.x, f.y + f.r * 0.22, Math.round(f.r * (f.boss ? 0.42 : 0.62)), '#ffffff', 900, 0.14);
         }

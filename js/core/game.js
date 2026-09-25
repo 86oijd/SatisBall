@@ -336,7 +336,8 @@
       ctx.save();
       ctx.translate(W / 2, y); ctx.scale(s, s);
       if (!this.pal.light) { ctx.globalCompositeOperation = 'lighter'; draw.glow(ctx, 0, 0, 1000, col, 0.5); ctx.globalCompositeOperation = 'source-over'; }
-      if (w.crown !== false) draw.crown(ctx, 0, -size * 0.55 - 70 + Math.sin(this.clock * 4) * 6, 1.3, '#ffd23f');
+      if (w.trophy) draw.trophy(ctx, 0, -size * 0.55 - 150 + Math.sin(this.clock * 4) * 6, 1.5, '#ffd23f');
+      else if (w.crown !== false) draw.crown(ctx, 0, -size * 0.55 - 70 + Math.sin(this.clock * 4) * 6, 1.3, '#ffd23f');
       draw.text(ctx, w.title, 0, -size * 0.55, { size, color: col, maxWidth: 2000, stroke: 18, strokeColor: 'rgba(0,0,0,0.6)', shadow: false });
       if (w.sub) draw.text(ctx, w.sub, 0, size * 0.62, { size: 42, color: this.pal.light ? this.pal.text : '#ffffff', weight: 700, stroke: this.pal.light ? 0 : 10, strokeColor: 'rgba(0,0,0,0.55)', shadow: false, maxWidth: 960 });
       ctx.restore();
