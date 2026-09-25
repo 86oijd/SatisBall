@@ -52,7 +52,7 @@
       // anchor at contact point, stored in the container frame
       const idx = this.strings.length;
       this.strings.push({ an: this.arena.anchorFor(C.px, C.py), c: gradientAt(this.pal.grad, (idx / s.goal) * 0.95), t: 0 });
-      b.color = this.strings[idx].c;
+      if (!s.ballColor) b.color = this.strings[idx].c; // a hand-picked ball colour stays; strings still rainbow
       const k = 1 + s.speedUp / 100;
       b.vx *= k * this.speedK / (this.lastK || 1); b.vy *= k * this.speedK / (this.lastK || 1); this.lastK = this.speedK;
       const sp = b.speed; if (sp > s.maxSpeed) b.setSpeed(s.maxSpeed);
@@ -111,7 +111,7 @@
   }
 
   SB.modes.register({
-    id: 'strings', name: 'Bounce Strings', icon: '✺', category: 'Classic', tagline: 'Every bounce ties a new string to the ball',
+    id: 'strings', name: 'Bounce Strings', icon: '✺', category: 'Satisfying', tagline: 'Every bounce ties a new string to the ball',
     hook: 'Every bounce adds a *string*',
     settings: [
       { key: 'goal', label: 'Strings goal', type: 'range', min: 10, max: 300, step: 5, def: 70, rand: [50, 100] },

@@ -74,7 +74,11 @@
       } else b.r = Math.min(maxR, b.r + gr);
       b.m = b.r * b.r;
       P.setEnergy(b, s.gravity);
-      if (s.colorShift) b.color = gradientAt(this.pal.grad, (this.coverage() / s.fill) * 0.95);
+      if (s.colorShift) {
+        const shifted = gradientAt(this.pal.grad, (this.coverage() / s.fill) * 0.95);
+        // a hand-picked colour stays recognisable: it only leans towards the palette as it grows
+        b.color = s.ballColor && b === this.balls[0] ? SB.util.mix(s.ballColor, shifted, 0.35) : shifted;
+      }
       this.note(this.velFromImpact(imp), b.x);
       this.contactFx(b, C.px, C.py, C.nx, C.ny, imp, b.color);
       if (s.imprints) { this.imprints.push({ x: b.x, y: b.y, r: b.r, c: b.color }); if (this.imprints.length > 140) this.imprints.shift(); }
@@ -141,7 +145,7 @@
   }
 
   SB.modes.register({
-    id: 'growth', name: 'Ball Growth', icon: '●', category: 'Classic', tagline: 'Every bounce makes it bigger until it fills the arena',
+    id: 'growth', name: 'Ball Growth', icon: '●', category: 'Satisfying', tagline: 'Every bounce makes it bigger until it fills the arena',
     hook: 'Every bounce it gets *BIGGER*',
     settings: [
       { key: 'shape', label: 'Arena shape', type: 'select', def: 'circle', options: SB.Arena.options(false), rand: ['circle', 'circle', 'triangle', 'square', 'hexagon', 'star', 'heart'] },

@@ -172,7 +172,7 @@
   }
 
   SB.modes.register({
-    id: 'spiral', name: 'Spiral Breaker', icon: '@', category: 'Classic', tagline: 'Every hit breaks the spinning spiral, adds speed & balls',
+    id: 'spiral', name: 'Spiral Breaker', icon: '@', category: 'Satisfying', tagline: 'Every hit breaks the spinning spiral, adds speed & balls',
     hook: 'Every hit makes it *faster*',
     settings: [
       { key: 'segments', label: 'Spiral pieces', type: 'range', min: 30, max: 400, step: 10, def: 260, rand: [200, 320] },

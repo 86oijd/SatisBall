@@ -151,14 +151,14 @@
   }
 
   SB.modes.register({
-    id: 'multiply', name: 'Ball Multiply', icon: '⁂', category: 'Classic', tagline: 'Every hit spawns another ball — pure chaos',
+    id: 'multiply', name: 'Ball Multiply', icon: '⁂', category: 'Satisfying', tagline: 'Every hit spawns another ball — pure chaos',
     hook: 'Every bounce = *+1 ball*',
     settings: [
       { key: 'rule', label: 'Rule', type: 'select', def: 'wall', options: [['wall', 'Wall hit spawns a ball'], ['escape', 'Each escape spawns 2']] },
       { key: 'target', label: 'Goal (balls)', type: 'range', min: 20, max: 1500, step: 10, def: 500, rand: [300, 800] },
       { key: 'chance', label: 'Spawn chance per hit', type: 'range', min: 0.05, max: 1, step: 0.05, def: 0.5, rand: [0.3, 0.8], show: (s) => s.rule === 'wall' },
       { key: 'shape', label: 'Arena shape', type: 'select', def: 'circle', options: SB.Arena.options(), rand: ['circle', 'square', 'hexagon', 'triangle', 'star', 'morph'], show: (s) => s.rule === 'wall' },
-      { key: 'spin', label: 'Arena spin', type: 'range', min: -3, max: 3, step: 0.05, def: 0.5, rand: [-1.2, 1.2] },
+      { key: 'spin', label: 'Arena spin', type: 'range', min: -3, max: 3, step: 0.05, def: 0.5, rand: [-1.2, 1.2], show: (s) => s.rule === 'wall' && s.shape !== 'circle' },
       { key: 'gap', label: 'Gap size', type: 'range', min: 10, max: 120, step: 1, def: 40, rand: [28, 60], show: (s) => s.rule === 'escape' },
       { key: 'gravity', label: 'Gravity', type: 'range', min: 0, max: 2500, step: 50, def: 900, rand: [0, 1600] },
       { key: 'speed', label: 'Speed', type: 'range', min: 150, max: 1400, step: 10, def: 650, rand: [450, 900] },

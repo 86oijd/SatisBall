@@ -17,6 +17,40 @@
     return new SB.Game(cfg);
   }
   T.makeGame = makeGame;
+  /** Does every setting actually change the video? Renders a small frame + stats after `secs` for the
+   *  defaults and for each setting changed on its own; returns the settings that made no difference. */
+  T.settingsEffect = (modeId, secs = 12, o = {}) => {
+    const def = SB.modes.byId[modeId];
+    const sig = (settings) => {
+      const g = makeGame(modeId, Object.assign({}, o, { settings: Object.assign({}, o.settings || {}, settings), seed: o.seed ?? 777 }));
+      const cv = document.createElement('canvas'); cv.width = 108; cv.height = 192;
+      let f = 0; const marks = [];
+      while (f < secs * 60) { g.frame(); f++; if (f % 120 === 0) marks.push(g.time.toFixed(2) + ':' + JSON.stringify(g.mode.stats ? g.mode.stats() : '')); }
+      const small = new SB.Game(Object.assign({}, g.cfg, { canvas: cv, audioMode: 'mute' }));
+      for (let i = 0; i < f; i++) small.frame();
+      small.render();
+      const px = small.ctx.getImageData(0, 0, 108, 192).data; let h = 0;
+      for (let i = 0; i < px.length; i += 7) h = (h * 31 + px[i]) >>> 0;
+      return h + '|' + marks.join(',') + '|' + (g.winInfo ? g.winInfo.title + g.time.toFixed(2) : '') + '|' + g.snd.events.length;
+    };
+    const base = sig({});
+    const alt = (s) => {
+      if (s.type === 'range') { const d = def.defaults[s.key]; return d === s.max ? s.min : s.max; }
+      if (s.type === 'select') { const o2 = s.options.find(([v]) => String(v) !== String(def.defaults[s.key])); return o2 ? o2[0] : def.defaults[s.key]; }
+      if (s.type === 'toggle') return !def.defaults[s.key];
+      if (s.type === 'color') return '#12ab34';
+      if (s.type === 'text') return 'TESTNAME';
+      return null;
+    };
+    const dead = [];
+    for (const s of def.settings) {
+      // a setting that is only shown under other conditions is tested with those conditions met
+      const st = { [s.key]: alt(s) };
+      if (s.show && !s.show(Object.assign({}, def.defaults, o.settings || {}, st))) continue;
+      if (sig(st) === base) dead.push(s.key);
+    }
+    return dead;
+  };
   /** Simulate a run to completion (or maxSecs) without rendering. Returns summary stats. */
   T.simulate = (modeId, o = {}) => {
     const g = makeGame(modeId, o);

@@ -201,7 +201,7 @@
   }
 
   SB.modes.register({
-    id: 'rings', name: 'Escape the Rings', icon: '◎', category: 'Classic', tagline: 'Break every rotating ring to escape',
+    id: 'rings', name: 'Escape the Rings', icon: '◎', category: 'Escape', tagline: 'Break every rotating ring to escape',
     hook: 'Can the ball *escape?*',
     settings: [
       { key: 'rings', label: 'Rings', type: 'range', min: 3, max: 60, step: 1, def: 24, rand: [12, 34] },

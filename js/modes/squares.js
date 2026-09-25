@@ -60,7 +60,7 @@
     reset() {
       this.map = new Uint8Array(GW * GH).fill(FILL);
       this.blocks = []; this.bars = []; this.gates = []; this.doors = []; this.spikes = []; this.portals = []; this.ghosts = []; this.pickups = []; this.flags = []; this.openings = []; this.bullets = [];
-      this.laneSpawns = null; this.bonusRoom = null;
+      this.laneSpawns = null; this.bonusRoom = null; this.hazardBudget = undefined;
       this.roomsDrawn = [];
     }
     carve(x0, y0, x1, y1) { for (let y = Math.max(0, y0); y <= Math.min(GH - 1, y1); y++) for (let x = Math.max(0, x0); x <= Math.min(GW - 1, x1); x++) this.map[y * GW + x] = FLOOR; }
@@ -175,7 +175,7 @@
           const mouth = side < 0 ? [xb - 2, xb] : [xa, xa + 2];
           this.addBlock(mouth[0], y0, mouth[1], y1, Math.max(3, Math.round(s.blockHp * 0.1)), { alcove: true });
           const sx = side < 0 ? xa : xb;
-          if (s.hazards > 0) this.addSpike(sx, y0, sx, y1, side < 0 ? 'right' : 'left');
+          if (s.hazards > 0 && rng.chance(clamp(0.35 + s.hazards * 0.13, 0, 1))) this.addSpike(sx, y0, sx, y1, side < 0 ? 'right' : 'left');
           const mid = Math.round((xa + xb) / 2);
           const knivesSoFar = this.pickups.filter((p) => p.kind === 'knife').length;
           this.pickups.push({ x: this.px(mid) + T / 2, y: this.py(y0 + 2), kind: knivesSoFar < s.knives && rng.chance(0.4) ? 'knife' : 'boost', taken: false });
@@ -204,7 +204,7 @@
         const lc = clamp(pc + (i % 2 ? -3 : 3) + rng.int(-1, 1), 2, GW - 4);
         this.carve(lc, midB + 1, lc + 1, GH - 3);
         this.flags.push(this.rectPx(lc, GH - 4, lc + 1, GH - 3));
-        if (s.hazards > 0 && i < lanes - 1 && rng.chance(0.55)) {
+        if (s.hazards > 0 && i < lanes - 1 && rng.chance(clamp(0.25 + s.hazards * 0.1, 0, 0.95))) {
           const y = rng.int(midB + 6, GH - 10), sideL = rng.chance(0.5);
           this.fillRect(sideL ? lc - 1 : lc + 2, y, sideL ? lc - 1 : lc + 2, y + 1, FILL);
           this.addSpike(sideL ? lc : lc + 1, y, sideL ? lc : lc + 1, y + 1, sideL ? 'right' : 'left', 'spike');
@@ -235,7 +235,7 @@
       // pencils on the right-hand risers pointing left into the climb
       if (s.hazards > 0) {
         for (let i = 1; i < N - 1; i++) {
-          if (!rng.chance(0.6)) continue;
+          if (!rng.chance(clamp(0.3 + s.hazards * 0.1, 0, 1))) continue;
           const r = steps[i], x = r[2];
           const yy = rng.int(r[3] - 5, r[3] - 2);
           if (this.tile(x + 1, yy) === FLOOR) continue;
@@ -289,7 +289,7 @@
       const sections = clamp(Math.round(s.rooms / 2.2), 2, 5);
       let side = lx0 === 2 ? 1 : -1;
       for (let k = 0; k < sections; k++) {
-        const h = rng.int(4, 6), y0 = y, y1 = Math.min(GH - 3, y0 + h - 1);
+        const h = rng.int(4, s.ghosts > 0 && k > 0 ? 7 : 6), y0 = y, y1 = Math.min(GH - 3, y0 + h - 1);
         this.carve(1, y0, GW - 2, y1); bands.push([1, y0, GW - 2, y1]);
         if (k === 0) this.carve(lx0, laneBot, lx0 + lanesW - 1, y0); // stalls drain into the first corridor
         const shaftH = 3;
@@ -321,8 +321,16 @@
       const lb = bands[bands.length - 1], endRight = side > 0;
       this.flags.push(endRight ? this.rectPx(lb[2] - 1, lb[1], lb[2], lb[3]) : this.rectPx(lb[0], lb[1], lb[0] + 1, lb[3]));
       this.ghostZones = bands.slice(1).filter((b) => b[3] - b[1] >= 6).map((b) => [b[0] + 2, b[1], b[2] - 2, b[3]]);
-      this.spikeZones = [];
+      // hazards 1-3 shape the bands (shaft spikes, necks, combs); anything above that adds loose spikes
+      this.spikeZones = bands.slice(1, -1).map((b) => [b[0] + 4, b[1], b[2] - 4, b[3]]);
+      this.hazardBudget = Math.max(0, s.hazards - 3);
       this.pickZones = bands.map((b) => [b[0] + 3, b[1], b[2] - 3, b[3]]);
+      // one-way portal: first corridor -> the second-to-last band (never straight into the finish band)
+      if (s.portals && bands.length >= 4) {
+        const A = this.freeSpotIn(bands[0], 2), B = this.freeSpotIn(bands[bands.length - 2], 2);
+        // it only switches on mid-run: a comeback route for whoever is behind, never a 10-second win
+        if (A && B) this.portals.push({ ax: A[0], ay: A[1], bx: B[0], by: B[1], size: 2 * T, rot: 0, openAt: 0.42 });
+      }
     }
 
     // ---- shared placements -------------------------------------------------
@@ -334,7 +342,7 @@
         const a = rng.pick([1, 3, 5, 7]) * Math.PI / 4, sp = s.speed * 0.38;
         this.ghosts.push({ x: this.px((x0 + x1 + 1) / 2), y: this.py((y0 + y1 + 1) / 2), vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, r: 22, box: [this.px(x0), this.py(y0), this.px(x1 + 1), this.py(y1 + 1)], t: rng.range(0, 6), period: rng.range(4.5, 6) });
       }
-      for (let i = 0; i < s.hazards && this.spikeZones.length; i++) {
+      for (let i = 0; i < (this.hazardBudget ?? s.hazards) && this.spikeZones.length; i++) {
         const z = rng.pick(this.spikeZones), p = this.freeSpotIn(z, 1);
         if (p) { const tx = Math.floor((p[0] - LX) / T), ty = Math.floor((p[1] - LY) / T); this.addSpike(tx, ty, tx, ty, 'all'); }
       }
@@ -436,7 +444,14 @@
         if (d.t > 7 || (d.owner && !d.owner.alive)) this.openDoor(d, null); // never let a door stall a run
       }
       this.updateGuns(dt);
-      for (const p of this.portals) p.rot += dt * 3;
+      for (const p of this.portals) {
+        p.rot += dt * (this.portalOpen(p) ? 3 : 0.6);
+        if (p.openAt && !p.opened && this.portalOpen(p)) {
+          p.opened = true;
+          this.fx.banner('PORTAL OPEN!', '#ffffff', { size: 70, y: 0.3, dur: 1.2, sub: 'a shortcut for whoever gets there first' });
+          this.fx.shockwave(p.ax, p.ay, '#ffffff', 260); this.snd.sfx('portal', 0.9, this.g.pan(p.ax));
+        }
+      }
       // queue paint stamps (drawn into the persistent paint layer at render)
       if (s.paint) for (const q of alive) if (!q.finished) this.paintQ.push([q.x, q.y, q.color, q.r]);
       if (this.paintQ.length > 400) this.paintQ.splice(0, this.paintQ.length - 400);
@@ -553,7 +568,7 @@
       if (g.state !== 'play') return;
       for (const f of this.flags) if (this.overlap(q, f)) { this.finish(q); return; }
       for (const p of this.portals) {
-        if (Math.abs(q.x - p.ax) < p.size / 2 && Math.abs(q.y - p.ay) < p.size / 2 && g.time - (q.portalT || -9) > 1) {
+        if (this.portalOpen(p) && Math.abs(q.x - p.ax) < p.size / 2 && Math.abs(q.y - p.ay) < p.size / 2 && g.time - (q.portalT || -9) > 1) {
           q.portalT = g.time;
           this.fx.burst(q.x, q.y, '#ffffff', 18, 500, { grav: 0 });
           q.x = p.bx; q.y = p.by; q.trail.length = 0;
@@ -764,7 +779,11 @@
       ctx.fillStyle = '#ffd23f';
       for (const b of this.bullets) { ctx.beginPath(); ctx.arc(b.x, b.y, 5, 0, TAU); ctx.fill(); }
       for (const b of this.bars) if (b.alive) { ctx.fillStyle = b.color; ctx.fillRect(b.x, b.y, b.w, b.h); ctx.fillStyle = 'rgba(255,255,255,0.35)'; if (b.w < b.h) ctx.fillRect(b.x, b.y, 2, b.h); else ctx.fillRect(b.x, b.y, b.w, 2); }
-      for (const p of this.portals) { this.drawSpiral(ctx, p.ax, p.ay, p.size, p.rot, 1); this.drawSpiral(ctx, p.bx, p.by, p.size * 0.8, -p.rot, 0.55); }
+      for (const p of this.portals) {
+        const open = this.portalOpen(p);
+        this.drawSpiral(ctx, p.ax, p.ay, p.size, p.rot, open ? 1 : 0.4); this.drawSpiral(ctx, p.bx, p.by, p.size * 0.8, -p.rot, open ? 0.55 : 0.25);
+        if (!open) draw.label(ctx, String(Math.ceil(this.g.targetLen * p.openAt - this.g.time)), p.ax, p.ay + 12, 30, '#ffffff', 900, 0.25);
+      }
       for (const b of this.blocks) if (b.alive) this.drawBlock(ctx, b);
       for (const p of this.pickups) if (!p.taken) this.drawPickup(ctx, p, t);
       for (const gh of this.ghosts) this.drawGhost(ctx, gh, t);
@@ -846,6 +865,7 @@
         ctx.closePath(); ctx.fill(); ctx.stroke();
       }
     }
+    portalOpen(p) { return !p.openAt || this.g.time >= this.g.targetLen * p.openAt; }
     drawSpiral(ctx, x, y, size, rot, a) {
       ctx.save(); ctx.globalAlpha = a; ctx.translate(x, y);
       ctx.fillStyle = '#ffffff'; ctx.fillRect(-size / 2, -size / 2, size, size);
@@ -923,16 +943,16 @@
     settings: [
       { key: 'layout', label: 'Level layout', type: 'select', def: 'random', options: [['random', 'Random each run'], ['gauntlet', 'Gauntlet (start stalls + doors)'], ['circuit', 'Circuit (rooms)'], ['tower', 'Tower climb'], ['lanes', 'Lanes'], ['stairs', 'Staircase']], rand: ['random'] },
       { key: 'squares', label: 'Squares', type: 'range', min: 2, max: 6, step: 1, def: 4, rand: [3, 5] },
-      { key: 'rooms', label: 'Level length', type: 'range', min: 3, max: 15, step: 1, def: 8, rand: [6, 11] },
+      { key: 'rooms', label: 'Level length', type: 'range', min: 3, max: 15, step: 1, def: 8, rand: [6, 11], show: (s) => s.layout !== 'lanes' },
       { key: 'blockHp', label: 'Number block hits (0 = none)', type: 'range', min: 0, max: 400, step: 5, def: 45, rand: [30, 120] },
       { key: 'bars', label: 'Colour bars (circuit)', type: 'range', min: 0, max: 16, step: 1, def: 8, rand: [4, 12], show: (s) => s.layout === 'circuit' || s.layout === 'random' },
-      { key: 'ghosts', label: 'Ghosts', type: 'range', min: 0, max: 4, step: 1, def: 1, rand: [0, 2] },
+      { key: 'ghosts', label: 'Ghosts', type: 'range', min: 0, max: 4, step: 1, def: 1, rand: [0, 2], show: (s) => s.layout !== 'tower' && s.layout !== 'lanes' },
       { key: 'hazards', label: 'Spikes & pencils', type: 'range', min: 0, max: 10, step: 1, def: 3, rand: [1, 6] },
       { key: 'knives', label: 'Knives', type: 'range', min: 0, max: 3, step: 1, def: 1, rand: [0, 2] },
       { key: 'guns', label: 'Guns', type: 'range', min: 0, max: 2, step: 1, def: 0, rand: [0, 1] },
       { key: 'boosts', label: 'Speed boosts', type: 'range', min: 0, max: 4, step: 1, def: 1, rand: [0, 3] },
       { key: 'hazardRule', label: 'Ghosts, spikes & knives', type: 'select', def: 'eliminate', options: [['eliminate', 'Eliminate (last alive wins)'], ['restart', 'Send back to start']] },
-      { key: 'portals', label: 'Spiral portal shortcut (circuit)', type: 'toggle', def: true, show: (s) => s.layout === 'circuit' || s.layout === 'random' },
+      { key: 'portals', label: 'Spiral portal shortcut', type: 'toggle', def: true, show: (s) => s.layout === 'circuit' || s.layout === 'gauntlet' || s.layout === 'random' },
       { key: 'paint', label: 'Paint trails', type: 'toggle', def: true },
       { key: 'speed', label: 'Speed', type: 'range', min: 200, max: 1100, step: 10, def: 480, rand: [420, 620] },
       { key: 'size', label: 'Square size', type: 'range', min: 20, max: 44, step: 1, def: 34, rand: [30, 40] },
