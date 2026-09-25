@@ -118,6 +118,7 @@
         this.fx.burst(mx, my, sg.color, 10, 500, { grav: 400 });
         this.fx.debris(mx, my, 20, 20, sg.color, 3, { size: 0.7, power: 0.7 });
         if (this.left % 10 === 0) g.shake(0.08);
+        if (this.left <= 3 && this.left > 0) { g.moment({ x: mx, y: my, zoom: 1.08, slow: 0.5, dur: 0.35 }); this.fx.flare(mx, my, sg.color, 500); }
         if (this.left === 10) this.fx.banner('10 LEFT!', this.pal.accent, { size: 70, y: 0.5, dur: 1.1 });
       }
       // pace brake: skip scheduled spawns while ahead of schedule
@@ -130,7 +131,9 @@
       const g = this.g;
       for (let i = 0; i < 6; i++) this.fx.ring(this.cx, this.cy, this.pal.grad[i % this.pal.grad.length], 300 + i * 120, 0.8 + i * 0.1, 10);
       this.fx.burst(this.cx, this.cy, '#ffffff', 80, 1400, { colors: this.pal.grad });
-      g.win({ title: 'SPIRAL DESTROYED!', size: 84, sub: `${this.balls.length} balls · ${this.hits} hits · ${SB.util.fmtTime(g.time)}`, color: this.pal.accent });
+      this.fx.shockwave(this.cx, this.cy, this.pal.accent, 1000);
+      for (const b of this.balls) { const a = Math.atan2(b.y - this.cy, b.x - this.cx); b.vx += Math.cos(a) * 600; b.vy += Math.sin(a) * 600; }
+      g.win({ title: 'SPIRAL DESTROYED!', size: 84, sub: `${this.balls.length} balls · ${this.hits} hits · ${SB.util.fmtTime(g.time)}`, color: this.pal.accent, fx: this.cx, fy: this.cy, zoom: 1.08 });
     }
     audit() {
       const v = [];
@@ -169,7 +172,7 @@
   }
 
   SB.modes.register({
-    id: 'spiral', name: 'Spiral Breaker', icon: '@', tagline: 'Every hit breaks the spinning spiral, adds speed & balls',
+    id: 'spiral', name: 'Spiral Breaker', icon: '@', category: 'Classic', tagline: 'Every hit breaks the spinning spiral, adds speed & balls',
     hook: 'Every hit makes it *faster*',
     settings: [
       { key: 'segments', label: 'Spiral pieces', type: 'range', min: 30, max: 400, step: 10, def: 260, rand: [200, 320] },
@@ -196,6 +199,8 @@
       { name: 'Triple Vortex', s: { arms: 3, turns: 2, segments: 210, spin: 1.3, spawnEvery: 10 } },
       { name: 'Tanky Spiral', s: { hp: 3, segments: 90, spawnEvery: 8, maxBalls: 60 } },
       { name: 'Zero-G Swarm', s: { gravity: 0, startBalls: 4, spawnEvery: 15, speed: 700 }, sound: { pattern: 'climb', theme: 'marimba' } },
+      { name: 'Galaxy (4 arms)', s: { arms: 4, turns: 1.75, segments: 280, spin: -1.1, thickness: 8 }, look: { bg: 'stars', palette: 'aurora' }, sound: { theme: 'bells', pattern: 'chords', backing: 'build' } },
+      { name: 'Lo-fi Spiral', s: { segments: 220, hp: 2, spin: 0.6, gravity: 500 }, look: { palette: 'sunset', bg: 'bokeh' }, sound: { theme: 'rhodes', pattern: 'chords', backing: 'pad' } },
     ],
     create: (g, s) => new Spiral(g, s),
   });

@@ -68,7 +68,7 @@
     applyEngineOpts() {
       const s = this.state.sound;
       this.engine.setOpts({ volume: s.volume, reverb: s.reverb, sfx: s.sfx, music: s.music });
-      this.engine.bank.warm(s.theme, 30, 100);
+      this.engine.bank.warm(s.theme, [], 36, 96);
     }
 
     // ------------------------------------------------------------ game lifecycle
@@ -169,7 +169,7 @@
           el('h1', {}, 'SATISBALL'),
           el('p', {}, 'Satisfying ball simulations, ready to post.'),
           el('button', { class: 'btn primary big' }, 'Click to start (sound on)')));
-      this.$splash.addEventListener('click', () => { this.engine.ensure(); this.engine.bank.warmAllFx(); this.$splash.remove(); this.restart(false); });
+      this.$splash.addEventListener('click', () => { this.engine.ensure(); this.engine.bank.warmFx(); this.$splash.remove(); this.restart(false); });
       this.$hint = el('div', { class: 'rec-hint' }, 'Recording mode — press H or Esc to exit');
       this.$modal = el('div', { class: 'modal hidden' });
       r.append(top, el('div', { class: 'body' }, el('aside', { class: 'left' }, el('h3', {}, 'Modes'), this.$modes), main, el('aside', { class: 'right' }, this.$tabs, this.$panel)), this.$splash, this.$hint, this.$modal);

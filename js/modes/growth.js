@@ -3,15 +3,13 @@
 (function (SB) {
   const { TAU, clamp, lerp, gradientAt, mix, rgba } = SB.util;
   const P = SB.phys, C = P.C, draw = SB.draw;
-  const SIDES = { circle: 0, triangle: 3, square: 4, pentagon: 5, hexagon: 6 };
 
   class Growth extends SB.Mode {
     init() {
       const s = this.s;
       this.cx = 540; this.cy = 1090; this.R = 450;
-      this.sides = SIDES[s.shape];
-      this.rot = 0;
-      this.inR = this.sides ? P.inradius(this.R, this.sides) : this.R;
+      this.arena = new SB.Arena({ cx: this.cx, cy: this.cy, R: this.R, shape: s.shape === 'morph' ? 'circle' : s.shape, spin: s.spin });
+      this.inR = this.arena.inradius;
       this.balls = [];
       for (let i = 0; i < s.balls; i++) {
         const a = this.rng.range(0, TAU);
@@ -33,30 +31,29 @@
       const s = this.s, g = this.g;
       const cov = this.coverage();
       g.tension = clamp(cov / s.fill, 0, 1);
-      this.w = s.spin;
-      this.rot += this.w * dt;
+      this.arena.update(dt);
       const n = P.substeps(this.balls, dt, 0.4, 16);
       const h = dt / n;
-      const pts = this.sides ? P.polygon(this.cx, this.cy, this.R, this.sides, this.rot) : null;
       for (let k = 0; k < n; k++) {
         for (const b of this.balls) {
           if (this.done) continue;
           this.integrate(b, h, s.gravity);
-          let imp = 0;
-          if (pts) imp = P.insidePolygon(b, pts, this.cx, this.cy, this.w, 1);
-          else if (P.insideCircle(b, this.cx, this.cy, this.R)) imp = P.resolve(b, C.nx, C.ny, C.depth, 1);
+          const imp = this.arena.collide(b, 1);
           if (imp > 40) this.bounce(b, imp);
         }
         for (let i = 0; i < this.balls.length; i++) for (let j = i + 1; j < this.balls.length; j++) {
           const imp = P.ballBall(this.balls[i], this.balls[j], 1);
           if (imp > 60) { this.bounce(this.balls[i], imp * 0.6); this.bounce(this.balls[j], imp * 0.6); }
         }
-        for (const b of this.balls) {
-          if (pts) P.insidePolygon(b, pts, this.cx, this.cy, this.w, 1); else this.keepInCircle(b, this.cx, this.cy, this.R);
-          P.lockEnergy(b, s.gravity);
-        }
+        for (const b of this.balls) { this.arena.keepIn(b); P.lockEnergy(b, s.gravity); }
       }
       for (const b of this.balls) this.decayBall(b, dt);
+      // heartbeat as it nears full
+      const k = cov / s.fill;
+      if (k > 0.82 && g.state === 'play') {
+        const beat = Math.floor(g.time / (0.62 - 0.25 * (k - 0.82) / 0.18));
+        if (beat !== this.lastBeat) { this.lastBeat = beat; this.snd.sfx('heart', 0.55 + (k - 0.82) * 2, 0); for (const b of this.balls) b.flash = Math.max(b.flash, 0.35); this.fx.kick(0.006); }
+      }
       if (!this.done && this.coverage() >= s.fill && g.state === 'play') this.finish();
     }
     bounce(b, imp) {
@@ -92,20 +89,20 @@
         this.fx.burst(b.x, b.y, b.color, 90, 1600, { colors: this.pal.grad, life: 1.4 });
         for (let i = 0; i < 5; i++) this.fx.ring(b.x, b.y, this.pal.grad[i % this.pal.grad.length], b.r + 200 + i * 90, 0.7 + i * 0.12, 12);
       }
-      g.win({ title: "IT'S FULL!", sub: `${this.bounces} bounces · ${SB.util.fmtTime(g.time)}`, color: '#ffffff', y: 600 });
+      const b0 = this.balls[0];
+      this.fx.shockwave(b0.x, b0.y, b0.color, 1100);
+      this.fx.flare(b0.x, b0.y, b0.color, 1400);
+      this.fx.flash(b0.color, 0.5);
+      this.snd.sfx('explode', 0.9);
+      g.win({ title: "IT'S FULL!", sub: `${this.bounces} bounces · ${SB.util.fmtTime(g.time)}`, color: '#ffffff', y: 600, fx: b0.x, fy: b0.y, zoom: 1.1 });
     }
     audit() {
       const v = [];
-      for (const b of this.balls) if (b.alive !== false && Math.hypot(b.x - this.cx, b.y - this.cy) > this.R - (this.sides ? 0 : b.r) + 2) v.push('ball outside arena');
+      if (!this.done) for (const b of this.balls) if (this.arena.audit(b)) v.push('ball outside arena');
       return v;
     }
     forceEnd() { for (const b of this.balls) { b.r = Math.min(this.inR * Math.sqrt(this.s.fill / this.balls.length), b.r + 0.5); b.m = b.r * b.r; } }
-    arenaPath(ctx, inset = 0) {
-      ctx.beginPath();
-      if (!this.sides) { ctx.arc(this.cx, this.cy, this.R + inset, 0, TAU); return; }
-      const pts = P.polygon(this.cx, this.cy, this.R + inset / Math.cos(Math.PI / this.sides), this.sides, this.rot);
-      pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.closePath();
-    }
+    arenaPath(ctx, inset = 0) { this.arena.path(ctx, inset); }
     render(ctx) {
       const pal = this.pal;
       this.arenaPath(ctx, 0);
@@ -144,11 +141,11 @@
   }
 
   SB.modes.register({
-    id: 'growth', name: 'Ball Growth', icon: '●', tagline: 'Every bounce makes it bigger until it fills the arena',
+    id: 'growth', name: 'Ball Growth', icon: '●', category: 'Classic', tagline: 'Every bounce makes it bigger until it fills the arena',
     hook: 'Every bounce it gets *BIGGER*',
     settings: [
-      { key: 'shape', label: 'Arena shape', type: 'select', def: 'circle', options: [['circle', 'Circle'], ['triangle', 'Triangle'], ['square', 'Square'], ['pentagon', 'Pentagon'], ['hexagon', 'Hexagon']] },
-      { key: 'spin', label: 'Arena spin', type: 'range', min: -3, max: 3, step: 0.05, def: 0.6, rand: [-1.2, 1.2] },
+      { key: 'shape', label: 'Arena shape', type: 'select', def: 'circle', options: SB.Arena.options(false), rand: ['circle', 'circle', 'triangle', 'square', 'hexagon', 'star', 'heart'] },
+      { key: 'spin', label: 'Arena spin', type: 'range', min: -3, max: 3, step: 0.05, def: 0.6, rand: [-1.2, 1.2], show: (s) => s.shape !== 'circle' },
       { key: 'growth', label: 'Growth per bounce', type: 'range', min: 0.5, max: 20, step: 0.5, def: 3, rand: [2, 5] },
       { key: 'growMode', label: 'Growth type', type: 'select', def: 'px', options: [['px', 'Pixels (steady)'], ['percent', 'Percent (accelerating)']] },
       { key: 'startSize', label: 'Start size', type: 'range', min: 6, max: 80, step: 1, def: 24, rand: [16, 32] },
@@ -167,6 +164,8 @@
       { name: 'Triangle Trap', s: { shape: 'triangle', spin: -0.7, gravity: 1800 } },
       { name: 'Twin Growth', s: { balls: 2, growth: 3.5 } },
       { name: 'Melody Grow', s: { shape: 'square', spin: 0.5 }, sound: { pattern: 'melody', melody: 'canon', theme: 'piano' } },
+      { name: 'Grow a Heart', s: { shape: 'heart', spin: 0, gravity: 1500 }, look: { palette: 'candy', bg: 'bokeh' }, sound: { theme: 'musicbox', pattern: 'melody', melody: 'twinkle', backing: 'pad' } },
+      { name: 'Star Squeeze', s: { shape: 'star', spin: 0.8, growth: 3.5 }, look: { palette: 'aurora', bg: 'stars' }, sound: { theme: 'bells', pattern: 'climb', backing: 'build' } },
     ],
     create: (g, s) => new Growth(g, s),
   });

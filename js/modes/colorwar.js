@@ -15,7 +15,8 @@
       this.flipT = new Float32Array(this.cols * this.rows);
       const T = s.teams;
       const ci = this.distinctColors(T, 8);
-      this.teams = ci.map((c, i) => ({ i, color: this.color(c), name: this.cname(c), count: 0 }));
+      this.teams = ci.map((c, i) => ({ i, color: this.color(c), dark: darken(this.color(c), 0.28), name: this.cname(c), count: 0 }));
+      this.anim = new Set(); this.paint = new Set();
       // initial territories
       for (let r = 0; r < this.rows; r++) for (let c = 0; c < this.cols; c++) {
         let t;
@@ -44,12 +45,14 @@
       this.dirty = true;
     }
     trailBalls() { return this.balls; }
+    roster() { return this.teams.map((t) => ({ name: t.name, color: t.color })); }
     recount() { for (const t of this.teams) t.count = 0; for (let i = 0; i < this.grid.length; i++) this.teams[this.grid[i]].count++; }
     update(dt) {
       const s = this.s, g = this.g;
       const left = this.duration - g.time;
       g.tension = clamp(g.time / this.duration, 0, 1);
-      for (let i = 0; i < this.flipT.length; i++) if (this.flipT[i] > 0) { this.flipT[i] = Math.max(0, this.flipT[i] - dt * 3); this.dirty = true; }
+      for (const i of this.anim) { this.flipT[i] = Math.max(0, this.flipT[i] - dt * 3); this.paint.add(i); if (this.flipT[i] <= 0) this.anim.delete(i); }
+      if (left < 3.2 && !this.zoomed && g.state === 'play') { this.zoomed = true; g.moment({ zoom: 1.05, dur: 3 }); }
       if (this.flood >= 0) { this.flood += dt * 1400; this.floodFill(); }
       if (!this.over) {
         const n = P.substeps(this.balls, dt, 0.35, 12), h = dt / n;
@@ -101,7 +104,7 @@
     convert(i, b, x, y) {
       const from = this.grid[i];
       this.grid[i] = b.team; this.teams[from].count--; this.teams[b.team].count++;
-      this.flipT[i] = 1; this.dirty = true; this.lastFlip = b.team;
+      this.flipT[i] = 1; this.anim.add(i); this.lastFlip = b.team;
       if (this.look.particles > 0.3) this.fx.burst(x, y, this.teams[b.team].color, 2, 220, { grav: 0, life: 0.5, size: 0.8 });
     }
     finish() {
@@ -114,7 +117,9 @@
       const pct = Math.round((w.count / this.grid.length) * 100);
       // flood the board from the winner's balls
       this.flood = 0; this.floodFrom = this.balls.filter((b) => b.team === w.i).map((b) => [b.x, b.y]);
-      g.win({ title: `${w.name} WINS!`, sub: `${pct}% of the board`, color: w.color, y: 1040 });
+      const wb = this.balls.find((b) => b.team === w.i);
+      this.snd.sfx('splat', 0.8);
+      g.win({ title: `${w.name} WINS!`, sub: `${pct}% of the board`, color: w.color, y: 1040, fx: wb ? wb.x : 540, fy: wb ? wb.y : 1100, zoom: 1.08 });
     }
     floodFill() {
       const ts = this.ts, W = this.winner.i;
@@ -122,9 +127,9 @@
       for (let r = 0; r < this.rows; r++) for (let c = 0; c < this.cols; c++) {
         const i = r * this.cols + c; if (this.grid[i] === W) continue;
         const x = this.x0 + (c + 0.5) * ts, y = this.y0 + (r + 0.5) * ts;
-        for (const [fx, fy] of this.floodFrom) if (Math.hypot(x - fx, y - fy) < this.flood) { this.grid[i] = W; this.flipT[i] = 1; changed = true; break; }
+        for (const [fx, fy] of this.floodFrom) if (Math.hypot(x - fx, y - fy) < this.flood) { this.grid[i] = W; this.flipT[i] = 1; this.anim.add(i); changed = true; break; }
       }
-      if (changed) this.dirty = true;
+
     }
     audit() {
       const v = [], ts = this.ts;
@@ -137,16 +142,18 @@
     forceEnd() { if (!this.over) this.finish(); }
     render(ctx) {
       const ts = this.ts;
-      if (this.dirty) {
+      // repaint only tiles that changed (full repaint on the first frame)
+      if (this.dirty || this.paint.size) {
         const g = this.cv.getContext('2d');
-        for (let r = 0; r < this.rows; r++) for (let c = 0; c < this.cols; c++) {
-          const i = r * this.cols + c, tm = this.teams[this.grid[i]];
-          g.fillStyle = darken(tm.color, 0.28); g.fillRect(c * ts, r * ts, ts, ts);
+        const paintTile = (i) => {
+          const r = (i / this.cols) | 0, c = i % this.cols, tm = this.teams[this.grid[i]];
+          g.fillStyle = tm.dark; g.fillRect(c * ts, r * ts, ts, ts);
           const f = this.flipT[i];
-          g.fillStyle = f > 0 ? mix(tm.color, '#ffffff', f * 0.8) : tm.color;
+          g.fillStyle = f > 0.01 ? mix(tm.color, '#ffffff', Math.round(f * 8) / 10) : tm.color;
           g.fillRect(c * ts + 1.5, r * ts + 1.5, ts - 3, ts - 3);
-        }
-        this.dirty = false;
+        };
+        if (this.dirty) for (let i = 0; i < this.grid.length; i++) paintTile(i); else for (const i of this.paint) paintTile(i);
+        this.dirty = false; this.paint.clear();
       }
       ctx.save();
       ctx.shadowColor = 'rgba(0,0,0,0.4)'; ctx.shadowBlur = 30;
@@ -198,7 +205,7 @@
   }
 
   SB.modes.register({
-    id: 'colorwar', name: 'Colour War', icon: '▦', tagline: 'Teams flip tiles — most territory at 0:00 wins',
+    id: 'colorwar', name: 'Colour War', icon: '▦', category: 'Territory', tagline: 'Teams flip tiles — most territory at 0:00 wins',
     hook: 'Which colour *takes over?*',
     settings: [
       { key: 'teams', label: 'Teams', type: 'range', min: 2, max: 4, step: 1, def: 2, rand: [2, 4] },

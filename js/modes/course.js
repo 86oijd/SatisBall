@@ -196,6 +196,7 @@
 
     // ---------------------------------------------------------------- simulation
     trailBalls() { return this.balls; }
+    roster() { return this.balls.map((b) => ({ name: b.name, color: b.color })); }
     alive() { return this.balls.filter((b) => b.alive); }
     update(dt) {
       const s = this.s, g = this.g;
@@ -418,6 +419,8 @@
         killer.knife = false;
         this.kill(victim, `SLICED BY ${killer.name}`, 'blade');
         this.g.hitstop(0.08);
+        this.g.moment({ x: victim.x, y: victim.y, zoom: 1.2, slow: 0.3, dur: 0.7 });
+        this.fx.flare(victim.x, victim.y, '#ffffff', 900);
         return;
       }
       if (imp > 200) { this.note(0.4, a.x); }
@@ -431,17 +434,20 @@
       this.snd.sfx('elim', 1, this.g.pan(b.x)); this.snd.sfx(sfx, 0.8, this.g.pan(b.x));
       this.g.shake(0.5); this.fx.flash(b.color, 0.2);
       this.pushFeed(`${b.name} ${why}`, b.color);
+      if (why === 'CRUSHED' || why === 'SQUASHED' || why === 'SLICED') this.g.moment({ x: b.x, y: b.y, zoom: 1.12, slow: 0.4, dur: 0.5 });
       const left = this.alive();
       if (left.length === 1) {
         const w = left[0];
-        this.g.win({ title: `${w.name} SURVIVES!`, sub: 'last ball standing', color: w.color, y: 900 });
+        this.g.win({ title: `${w.name} SURVIVES!`, sub: 'last ball standing', color: w.color, y: 900, fx: w.x, fy: w.y });
       } else if (left.length > 1) this.fx.banner(`${b.name} ${why.split(' ')[0]}!`, b.color, { size: 70, y: 0.55, sub: `${left.length} left`, dur: 1.3 });
     }
     cross(b) {
       b.finished = true;
       if (this.g.state !== 'play') return;
       this.fx.burst(b.x, b.y, b.color, 60, 1100, { colors: this.pal.grad });
-      this.g.win({ title: `${b.name} WINS!`, sub: `first to the finish · ${SB.util.fmtTime(this.g.time)}`, color: b.color, y: 900 });
+      const second = this.alive().filter((q) => q !== b).sort((p, q) => q.y - p.y)[0];
+      const photo = second && b.y - second.y < 260;
+      this.g.win({ title: `${b.name} WINS!`, sub: photo ? `PHOTO FINISH over ${second.name}!` : `first to the finish · ${SB.util.fmtTime(this.g.time)}`, color: b.color, y: 900, fx: b.x, fy: b.y, zoom: photo ? 1.2 : 1.12 });
     }
     pushFeed(text, color) { this.feed.push({ text, color, t: 0 }); if (this.feed.length > 3) this.feed.shift(); }
     updateLeader(sorted) {
@@ -676,7 +682,7 @@
   }
 
   SB.modes.register({
-    id: 'course', name: 'Obstacle Course Survival', icon: '⛛', tagline: 'Outrun THE WALL through gates, blades and traps',
+    id: 'course', name: 'Obstacle Course Survival', icon: '⛛', category: 'Survival', tagline: 'Outrun THE WALL through gates, blades and traps',
     hook: 'Who *survives* the course?',
     hookY: 150,
     settings: [

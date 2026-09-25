@@ -85,6 +85,7 @@
       }
     }
     trailBalls() { return this.balls; }
+    roster() { return this.balls.map((b) => ({ name: b.name, color: b.color })); }
     alive() { return this.balls.filter((b) => b.alive); }
     progress(b) { return b.laps + clamp((b.y - TOP) / (BOT - TOP), 0, 1); }
 
@@ -187,6 +188,13 @@
       const alive = this.alive();
       if (alive.length <= 1) return;
       const pending = alive.filter((b) => b.laps < this.round);
+      // photo finish: the last two are both about to cross — slow it right down
+      if (pending.length === 2 && this.photoRound !== this.round && pending.every((b) => b.y > BOT - 240)) {
+        this.photoRound = this.round;
+        g.moment({ x: (pending[0].x + pending[1].x) / 2, y: BOT - 90, zoom: 1.18, slow: 0.3, dur: 0.7 });
+        this.fx.banner('PHOTO FINISH!', '#ffffff', { size: 58, y: 0.62, dur: 1 });
+        this.snd.sfx('riser', 0.4, 0, 1.6);
+      }
       if (pending.length === 1) this.eliminate(pending[0]);
       else if (this.s.timer && g.time - this.roundStart > this.roundLimit()) {
         // time's up: the ball furthest behind goes
@@ -202,15 +210,17 @@
       b.alive = false; b.elimRound = this.round;
       this.out.push(b);
       this.fx.burst(b.x, b.y, b.color, 60, 1100, { colors: [b.color, '#ffffff'] });
-      this.fx.ring(b.x, b.y, b.color, 260, 0.6, 12);
+      this.fx.shockwave(b.x, b.y, b.color, 300);
+      this.fx.flare(b.x, b.y, b.color, 700);
       this.snd.sfx('elim', 0.95, g.pan(b.x));
       g.shake(0.35); this.fx.flash(b.color, 0.18);
       this.round++; this.roundStart = g.time;
       const left = this.alive();
       if (left.length === 1) {
         const w = left[0];
-        g.win({ title: `${w.name} WINS!`, sub: `last ball standing · ${SB.util.fmtTime(g.time)}`, color: w.color, y: 1000 });
-      } else this.fx.banner(`${b.name} OUT!`, b.color, { size: 66, y: 0.5, sub: `${left.length} left`, dur: 1.2 });
+        g.win({ title: `${w.name} WINS!`, sub: `last ball standing · ${SB.util.fmtTime(g.time)}`, color: w.color, y: 1000, fx: w.x, fy: w.y });
+      } else if (this.photoRound !== this.round - 1) this.g.moment({ x: b.x, y: b.y, zoom: 1.1, dur: 0.4 });
+      if (left.length > 1) this.fx.banner(`${b.name} OUT!`, b.color, { size: 66, y: 0.5, sub: `${left.length} left`, dur: 1.2 });
     }
     updateLeader() {
       const alive = this.alive();
@@ -313,7 +323,7 @@
   }
 
   SB.modes.register({
-    id: 'race', name: 'Marble Race Knockout', icon: '⚑', tagline: 'Last ball each lap is eliminated',
+    id: 'race', name: 'Marble Race Knockout', icon: '⚑', category: 'Survival', tagline: 'Last ball each lap is eliminated',
     hook: 'Last place is *OUT*',
     hookY: 170,
     settings: [

@@ -92,5 +92,29 @@
     },
   ];
   const byId = Object.fromEntries(P.map((p) => [p.id, p]));
-  SB.palettes = { list: P, get: (id) => byId[id] || P[0] };
+  const { mix, lighten, darken, luminance } = SB.util;
+  /** A palette built from a few user colours (Look → Custom palette). */
+  function custom(c) {
+    const bg0 = c.bg0 || '#0a0620', bg1 = c.bg1 || '#1a0b3a', accent = c.accent || '#ff3d8b';
+    const balls = (c.balls && c.balls.filter(Boolean).length ? c.balls.filter(Boolean) : P[0].balls.map((b) => b.c)).map((col, i) => ({ c: col, n: P[0].balls[i % P[0].balls.length].n }));
+    const light = luminance(bg0) > 0.6;
+    const key = [bg0, bg1, accent].concat(balls.map((b) => b.c)).join('');
+    let h = 7; for (const ch of key) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+    return {
+      id: 'custom-' + h, name: 'Custom', light, bg: [bg0, bg1, darken(bg1, 0.5)], glow: [c.glow || accent, balls[1] ? balls[1].c : accent],
+      text: light ? '#1b1030' : '#ffffff', accent, dim: mix(bg1, '#ffffff', 0.45),
+      grad: balls.slice(0, 6).map((b) => b.c).concat([balls[0].c]), balls,
+    };
+  }
+  /** Resolve the palette a run uses: preset or custom, then per-slot cast overrides (names / colours). */
+  function resolve(look) {
+    let base = look.palette === 'custom' ? custom(look.custom || {}) : (byId[look.palette] || P[0]);
+    const cast = look.cast || {};
+    const names = cast.names || [], cols = cast.colors || [];
+    if (!names.some((x) => x && x.trim()) && !cols.some(Boolean)) return base;
+    return Object.assign({}, base, {
+      balls: base.balls.map((b, i) => ({ c: cols[i] || b.c, n: (names[i] || '').trim().toUpperCase().slice(0, 12) || b.n })),
+    });
+  }
+  SB.palettes = { list: P, get: (id) => byId[id] || P[0], resolve, custom };
 })(window.SB);
