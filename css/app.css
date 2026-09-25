@@ -83,7 +83,7 @@ main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .presets { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
 .note { color: var(--muted); font-size: 12px; margin: 6px 0 0; }
 input[type=range] { width: 100%; accent-color: var(--accent); height: 18px; }
-select, input[type=text], input[type=number] { width: 100%; background: rgba(0,0,0,0.3); color: var(--text); border: 1px solid var(--line); border-radius: 9px; padding: 8px 10px; font: inherit; }
+select, textarea, input[type=text], input[type=number], input[type=datetime-local] { width: 100%; background: rgba(0,0,0,0.3); color: var(--text); border: 1px solid var(--line); border-radius: 9px; padding: 8px 10px; font: inherit; }
 input[type=number] { width: 150px; }
 select option { background: #14102e; }
 .toggle { display: flex !important; align-items: center; gap: 10px; cursor: pointer; font-weight: 600; font-size: 13px; }
@@ -238,3 +238,6 @@ body.mobile .splash h1 { font-size: 40px; }
 body.mobile.recmode .mobile-bar { display: none; }
 body.mobile.recmode .body { padding: 0; height: 100dvh; }
 body.mobile.recmode aside { display: none; }
+
+textarea { resize: vertical; font-size: 13px; line-height: 1.4; }
+.sec a { color: var(--cyan); }

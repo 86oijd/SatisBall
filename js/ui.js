@@ -39,6 +39,12 @@
     run: { targetLen: 35, autoRestart: true, autoRandom: false, randomLook: true, seed: 1 },
     export: { res: 1080, fps: 60, quality: 'high', limit: 0 },
     batch: { count: 5, which: 'current', list: [], randomSettings: true, randomLook: true, minLen: 15, maxLen: 60, useFolder: true },
+    publish: {
+      title: '{hook} #shorts', desc: '{hook}\n\n{winner}\nComment who you picked 👇\n\n{hashtags}', ttCaption: '{hook} {hashtags}',
+      hashtags: '#satisfying #oddlysatisfying #simulation #shorts',
+      yt: { auto: false, clientId: '', privacy: 'public', category: '24', madeForKids: false, schedule: false, startAt: '', every: 4, nextAt: 0 },
+      tt: { auto: false, relay: '', mode: 'inbox', privacy: '', comments: true, duet: true, stitch: true, consent: false },
+    },
     tab: 'mode',
   });
 
@@ -49,6 +55,7 @@
       this.engine = SB.engine;
       this.paused = false; this.acc = 0; this.last = 0; this.fps = 60; this.frameMs = 0; this.dts = [];
       this.rec = null; this.exporting = false; this.filter = '';
+      this.queue = new SB.publish.Queue(() => this.renderQueue());
       this.build();
       this.applyEngineOpts();
       this.newGame();
@@ -69,6 +76,7 @@
           if (s.tab) d.tab = s.tab;
           d.look.custom = Object.assign(DEFAULT_STATE().look.custom, d.look.custom || {});
           d.look.cast = Object.assign({ names: [], colors: [] }, d.look.cast || {});
+          const P0 = DEFAULT_STATE().publish; d.publish.yt = Object.assign(P0.yt, (s.publish || {}).yt || {}); d.publish.tt = Object.assign(P0.tt, (s.publish || {}).tt || {});
         }
       } catch (e) { /* storage unavailable */ }
       d.run.seed = (Math.random() * 1e9) >>> 0;
@@ -614,8 +622,117 @@
       }).catch((e) => this.toast('Import failed: ' + e.message));
     }
     importFromHash() {
+      try { const m = SB.publish.tiktok.fromHash(); if (m) { this.toast(m); this.tab = 'export'; this.renderPanels(); } } catch (e) { this.toast('TikTok login failed: ' + e.message); }
       const h = location.hash.slice(1);
       if (h.startsWith('SB2-')) { this.loadCode(h); history.replaceState(null, '', location.pathname + location.search); }
+    }
+
+    // ------------------------------------------------------------ publishing (YouTube Shorts / TikTok)
+    panelPublish(p) {
+      const P = this.state.publish, Y = P.yt, T = P.tt, yt = SB.publish.youtube, tt = SB.publish.tiktok;
+      const save = (rerender) => { this.save(); if (rerender) this.renderPanels(); };
+      const link = (href, text) => el('a', { href, target: '_blank', rel: 'noopener' }, text);
+      // YouTube
+      const ytOk = yt.connected();
+      this.section(p, '▶ YouTube Shorts',
+        el('p', { class: 'note', style: 'margin:0 0 10px' }, 'Uploads each export to your channel. One-time setup: ', link('https://console.cloud.google.com/apis/library/youtube.googleapis.com', 'enable YouTube Data API v3'), ', create an OAuth client ID (type "Web application") with this site\'s address as an authorised JavaScript origin, and paste it below. See PUBLISHING.md for the step-by-step.'),
+        this.ctlText('OAuth client ID', Y.clientId, (v) => { Y.clientId = v.trim(); save(); }, { placeholder: '1234…apps.googleusercontent.com', max: 200 }),
+        el('div', { class: 'row' },
+          el('button', { class: 'btn ' + (ytOk ? '' : 'primary'), onclick: () => yt.connect(Y.clientId).then(() => { this.toast('YouTube connected'); this.renderPanels(); }, (e) => this.toast(e.message)) }, ytOk ? '↻ Reconnect' : 'Connect YouTube'),
+          ytOk ? el('button', { class: 'btn', onclick: () => { yt.disconnect(); this.renderPanels(); } }, 'Disconnect') : null,
+          el('span', { class: 'note' }, ytOk ? `connected · ${Math.max(0, Math.round((yt.expires - Date.now()) / 60e3))} min left` : 'not connected')),
+        this.ctlToggle('Upload automatically after every export (and batch)', Y.auto, (v) => { Y.auto = v; save(); }),
+        this.ctlSelect('Visibility', Y.privacy, [['public', 'Public'], ['unlisted', 'Unlisted'], ['private', 'Private']], (v) => { Y.privacy = v; save(); }),
+        this.ctlToggle('Schedule instead of posting now', Y.schedule, (v) => { Y.schedule = v; save(true); }),
+        Y.schedule ? el('div', { class: 'ctl' }, el('label', {}, el('span', {}, 'First video goes live at')), el('input', { type: 'datetime-local', value: Y.startAt, onchange: (e) => { Y.startAt = e.target.value; Y.nextAt = 0; save(); } })) : null,
+        Y.schedule ? this.ctlRange('Then one every', Y.every, 1, 48, 1, (v) => { Y.every = v; save(); }, (v) => v + ' h') : null,
+        Y.schedule ? el('p', { class: 'note' }, 'Scheduled videos upload as private and YouTube publishes them at their time. Next slot: ' + new Date(this.nextSlot(false)).toLocaleString()) : null,
+        this.ctlSelect('Category', Y.category, [['24', 'Entertainment'], ['20', 'Gaming'], ['28', 'Science & Technology'], ['22', 'People & Blogs']], (v) => { Y.category = v; save(); }),
+        this.ctlToggle('Made for kids', Y.madeForKids, (v) => { Y.madeForKids = v; save(); }),
+        el('p', { class: 'warn' }, 'Google keeps videos uploaded through a new (unaudited) API project private. To post public videos automatically, request the free API audit for your project — until then, flip them to public in YouTube Studio.'));
+      // TikTok
+      const ttOk = tt.connected();
+      const cr = tt.creator;
+      const privOpts = cr && cr.privacy_level_options ? cr.privacy_level_options : ['PUBLIC_TO_EVERYONE', 'MUTUAL_FOLLOW_FRIENDS', 'FOLLOWER_OF_CREATOR', 'SELF_ONLY'];
+      const privName = { PUBLIC_TO_EVERYONE: 'Everyone', MUTUAL_FOLLOW_FRIENDS: 'Friends', FOLLOWER_OF_CREATOR: 'Followers', SELF_ONLY: 'Only me' };
+      this.section(p, '♪ TikTok',
+        el('p', { class: 'note', style: 'margin:0 0 10px' }, 'TikTok requires a registered developer app plus a tiny relay server that keeps its secret safe (free on Cloudflare — see relay/README.md).'),
+        this.ctlText('Relay URL', T.relay, (v) => { T.relay = v.trim(); save(); }, { placeholder: 'https://satisball-relay.you.workers.dev', max: 200 }),
+        el('div', { class: 'row' },
+          el('button', { class: 'btn ' + (ttOk ? '' : 'primary'), onclick: () => { try { tt.connect(T.relay); } catch (e) { this.toast(e.message); } } }, ttOk ? '↻ Reconnect' : 'Connect TikTok'),
+          ttOk ? el('button', { class: 'btn', onclick: () => { tt.disconnect(); this.renderPanels(); } }, 'Disconnect') : null,
+          ttOk && T.mode === 'direct' ? el('button', { class: 'btn', onclick: () => tt.creatorInfo(T.relay).then(() => this.renderPanels(), (e) => this.toast(e.message)) }, 'Load account') : null,
+          el('span', { class: 'note' }, ttOk ? (cr ? `@${cr.creator_username || cr.creator_nickname}` : 'connected') : 'not connected')),
+        this.ctlSelect('How to post', T.mode, [['inbox', 'Send to TikTok inbox as a draft (finish posting in the app)'], ['direct', 'Post directly (needs an audited TikTok app)']], (v) => { T.mode = v; save(true); }),
+        T.mode === 'direct' ? this.ctlSelect('Who can see it (you must choose)', T.privacy, [['', '— choose —']].concat(privOpts.map((o) => [o, privName[o] || o])), (v) => { T.privacy = v; save(); }) : null,
+        T.mode === 'direct' ? el('div', { class: 'row' }, this.ctlToggle('Comments', T.comments, (v) => { T.comments = v; save(); }), this.ctlToggle('Duet', T.duet, (v) => { T.duet = v; save(); }), this.ctlToggle('Stitch', T.stitch, (v) => { T.stitch = v; save(); })) : null,
+        T.mode === 'direct' ? this.ctlToggle("I agree to TikTok's Music Usage Confirmation", T.consent, (v) => { T.consent = v; save(); }) : null,
+        this.ctlToggle('Send automatically after every export (and batch)', T.auto, (v) => { T.auto = v; save(); }),
+        T.mode === 'direct' ? el('p', { class: 'warn' }, 'Until TikTok audits your app, direct posts can only be "Only me". Inbox drafts work for everyone and are the safest way to automate.') : null);
+      // captions
+      const ta = (label, key, rows) => el('div', { class: 'ctl' }, el('label', {}, el('span', {}, label)), el('textarea', { rows, oninput: (e) => { P[key] = e.target.value; save(); } }, P[key]));
+      const ex = SB.publish.captionVars(this.snapshot(), { winner: 'MINT WINS!', duration: 34 }, P);
+      this.section(p, 'Titles, captions & hashtags',
+        el('p', { class: 'note', style: 'margin:0 0 10px' }, 'Placeholders: {hook} {winner} {mode} {seed} {secs} {hashtags}. Example title: “' + SB.publish.fill(P.title, ex).slice(0, 100) + '”'),
+        ta('YouTube title', 'title', 1), ta('YouTube description', 'desc', 4), ta('TikTok caption', 'ttCaption', 2),
+        this.ctlText('Hashtags', P.hashtags, (v) => { P.hashtags = v; save(); }, { max: 300 }));
+      const q = el('div', { class: 'plist', id: 'queue-list' });
+      this.section(p, 'Upload queue', q);
+      this.renderQueue();
+    }
+    renderQueue() {
+      const q = document.getElementById('queue-list');
+      if (!q) return;
+      q.innerHTML = '';
+      if (!this.queue.items.length) { q.append(el('p', { class: 'note' }, 'Uploads show up here.')); return; }
+      for (const it of this.queue.items) {
+        const st = it.state === 'uploading' ? `${Math.round(it.progress * 100)}%` : it.state === 'done' ? '✓ ' + (it.doneText ? it.doneText(it.result) : 'done') : it.state === 'error' ? '✕ ' + it.error : 'waiting';
+        q.append(el('div', { class: 'pitem' }, el('div', { class: 'pload' }, el('span', {}, it.icon), el('b', {}, it.label), el('small', {}, st)),
+          it.state === 'error' ? el('button', { class: 'btn mini', onclick: () => this.queue.retry(it) }, '↻') : null,
+          it.state === 'done' && it.result && it.result.url ? el('a', { class: 'btn mini', href: it.result.url, target: '_blank', rel: 'noopener' }, '↗') : null));
+      }
+    }
+    /** Next YouTube schedule slot (ms); advance=true consumes it. */
+    nextSlot(advance = true) {
+      const Y = this.state.publish.yt, every = Y.every * 3600e3;
+      let t = Y.nextAt || (Y.startAt ? new Date(Y.startAt).getTime() : 0) || Date.now() + 3600e3;
+      const soon = Date.now() + 20 * 60e3;
+      while (t < soon) t += every;
+      if (advance) { Y.nextAt = t + every; this.save(); }
+      return t;
+    }
+    enqueueYouTube(res, snap, name) {
+      const P = this.state.publish, yt = SB.publish.youtube;
+      const at = P.yt.schedule ? new Date(this.nextSlot()).toISOString() : null;
+      const meta = yt.metadata(snap, res, P, at);
+      if (res.duration > 180) this.toast('Over 3 minutes — YouTube will treat it as a normal video, not a Short');
+      return this.queue.add({ icon: '▶', label: `YouTube · ${meta.snippet.title}`, run: (onP) => yt.upload(res.blob, meta, onP), doneText: (r) => `${r.privacy || ''}${at ? ' · goes live ' + new Date(at).toLocaleString() : ''}` });
+    }
+    enqueueTikTok(res, snap, name) {
+      const P = this.state.publish, tt = SB.publish.tiktok;
+      const caption = SB.publish.fill(P.ttCaption, SB.publish.captionVars(snap, res, P));
+      return this.queue.add({
+        icon: '♪', label: `TikTok ${P.tt.mode === 'direct' ? 'post' : 'draft'} · ${caption.slice(0, 60)}`,
+        run: async (onP) => {
+          if (P.tt.mode === 'direct' && !P.tt.consent) throw new Error("tick TikTok's Music Usage Confirmation first");
+          const r = await tt.upload(P.tt.relay, res.blob, P, caption, onP);
+          for (let i = 0; i < 6; i++) { // brief status check so failures are visible
+            await new Promise((ok) => setTimeout(ok, 2500));
+            const st = await tt.status(P.tt.relay, r.publish_id).catch(() => null);
+            if (st && st.status === 'FAILED') throw new Error('TikTok rejected it: ' + (st.fail_reason || 'unknown'));
+            if (st && /SEND_TO_USER_INBOX|PUBLISH_COMPLETE/.test(st.status)) return Object.assign(r, { status: st.status });
+          }
+          return Object.assign(r, { status: 'processing' });
+        },
+        doneText: (r) => (r.status === 'SEND_TO_USER_INBOX' ? 'in your TikTok inbox — open the app to post' : r.status === 'PUBLISH_COMPLETE' ? 'posted' : 'uploaded · TikTok is processing'),
+      });
+    }
+    /** Queue uploads for whichever platforms have auto-upload on. Returns a short label or ''. */
+    autoPublish(res, snap, name) {
+      const P = this.state.publish, out = [];
+      if (P.yt.auto && P.yt.clientId) { this.enqueueYouTube(res, snap, name); out.push('YouTube'); }
+      if (P.tt.auto && P.tt.relay && SB.publish.tiktok.connected()) { this.enqueueTikTok(res, snap, name); out.push('TikTok'); }
+      return out.join(' + ');
     }
 
     // ------------------------------------------------------------ Export tab
@@ -653,6 +770,7 @@
         this.ctlRange('Longest allowed', B.maxLen, 20, 200, 1, (v) => setB('maxLen', v), (v) => v + 's'),
         window.showDirectoryPicker ? this.ctlToggle('Save into a folder I choose (no download prompts)', B.useFolder, (v) => setB('useFolder', v)) : el('p', { class: 'note' }, 'Files will download one after another.'),
         el('button', { class: 'btn accent big wide', disabled: !c.video, onclick: () => this.startBatch() }, `▶ Render ${B.count} video${B.count > 1 ? 's' : ''}`));
+      this.panelPublish(p);
     }
     refreshCaps() {
       const X = this.state.export, [w, h] = SB.recorder.RESOLUTIONS[X.res] || [1080, 1920];
@@ -773,6 +891,12 @@
           }));
           const name = this.fileName(snap, res.ext);
           SB.library.history.push({ snap, at: Date.now(), secs: +res.duration.toFixed(1), title: res.winner || '' });
+          const ups = this.autoPublish(res, snap, name);
+          const P = this.state.publish;
+          if (!ups) {
+            if (SB.publish.youtube.connected()) row.append(el('button', { class: 'btn', onclick: (e) => { e.target.remove(); this.enqueueYouTube(res, snap, name); this.toast('Uploading to YouTube — see Export tab'); } }, '▶ Upload to YouTube'));
+            if (SB.publish.tiktok.connected() && P.tt.relay) row.append(el('button', { class: 'btn', onclick: (e) => { e.target.remove(); this.enqueueTikTok(res, snap, name); this.toast('Sending to TikTok — see Export tab'); } }, '♪ Send to TikTok'));
+          }
           const file = window.File ? new File([res.blob], name, { type: res.blob.type }) : null;
           if (file && navigator.canShare && navigator.canShare({ files: [file] }) && this.mobileMQ.matches) {
             // phones: the share sheet can save straight to Photos or post to TikTok
@@ -784,6 +908,7 @@
             SB.recorder.download(res.blob, name);
             status.textContent = `Saved ${name} · ${res.duration.toFixed(1)}s · ${(res.blob.size / 1e6).toFixed(1)} MB`;
           }
+          if (ups) status.textContent += ` · uploading to ${ups}`;
         } catch (e) {
           status.textContent = e.message === 'cancelled' ? 'Cancelled.' : 'Export failed: ' + e.message;
           if (e.message !== 'cancelled') console.error(e);
@@ -844,8 +969,9 @@
           }));
           const name = this.fileName(snap, res.ext).replace('satisball_', `satisball_${String(i + 1).padStart(2, '0')}_`);
           await SB.recorder.saveTo(dir, res.blob, name);
+          const ups = this.autoPublish(res, snap, name, i);
           SB.library.history.push({ snap, at: Date.now(), secs: +res.duration.toFixed(1), title: res.winner || '' });
-          small.textContent = `✓ ${name} · ${res.duration.toFixed(1)}s · ${(res.blob.size / 1e6).toFixed(1)} MB`;
+          small.textContent = `✓ ${name} · ${res.duration.toFixed(1)}s · ${(res.blob.size / 1e6).toFixed(1)} MB${ups ? ' · upload queued: ' + ups : ''}`;
           row.classList.add('ok'); ok++;
         } catch (e) {
           small.textContent = e.message === 'cancelled' ? 'cancelled' : '✕ ' + e.message;

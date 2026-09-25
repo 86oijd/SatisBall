@@ -72,6 +72,9 @@ Because the render happens offline, the video is perfectly smooth even if your P
 
 In Chrome/Edge you can pick a folder so files save straight into it, with no download prompts.
 
+### Auto-publish to YouTube Shorts and TikTok
+In the **Export** tab, connect YouTube and/or TikTok and switch on auto-upload. Every export and every batch video then uploads by itself, with templated titles, captions and hashtags. YouTube uploads can be scheduled, e.g. one every 4 hours, and TikTok gets inbox drafts or direct posts. The one-time developer setup, and the platforms' limits for new apps, are in [PUBLISHING.md](PUBLISHING.md).
+
 ### Live record
 Press **● Record live** (**L**). The run restarts and records in real time and stops by itself after the payoff. Use Export when you want guaranteed smoothness.
 
@@ -177,6 +180,8 @@ node tools/export.cjs rings out.mp4 35   # full export (env OPTS='{"width":720,"
 python3 tools/mp4info.py out.mp4         # frame count / duration / size of an exported MP4
 node tools/uitest.cjs .     # drives every mode x tab, library, share codes, replay, export options
 node tools/mobile.cjs .     # iPhone-sized touch emulation: bottom bar, sheets, clean view, export modal
+node tools/publishtest.cjs  # export + auto-upload to mocked YouTube / TikTok endpoints
+node tools/relaytest.mjs    # TikTok relay logic with TikTok's API mocked
 ```
 
 ## Licences
