@@ -158,7 +158,7 @@
     const ext = v.container;
     return { blob: new Blob([buf], { type: ext === 'mp4' ? 'video/mp4' : 'video/webm' }), ext, duration, codec: v.codec, audio: a ? a.codec : 'none', width: w, height: h, fps, winner: g1.winInfo ? g1.winInfo.title : '' };
   }
-  function tick(ms = 0) { return new Promise((r) => setTimeout(r, ms)); }
+  function tick(ms = 0) { return ms > 0 ? SB.util.pause(ms) : SB.util.yieldNow(); } // timer-free: keeps exporting in background tabs
 
   /** Real-time capture of the preview canvas + master audio. */
   class LiveRecorder {

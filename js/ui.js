@@ -47,7 +47,8 @@
     },
     tab: 'mode',
     preview: { volume: 0.45, muted: false },
-    finder: { count: 60, vary: false }, // listening level only — never affects exports
+    finder: { count: 60, vary: false },
+    autopilot: { enabled: false, seeds: 5000, every: 2, budgetMin: 75, vary: true, randomLook: true, variety: true, minLen: 15, maxLen: 90, modes: [], ytCap: 6, ttCap: 5, keepCopy: false }, // listening level only — never affects exports
   });
 
   class UI {
@@ -65,6 +66,14 @@
       requestAnimationFrame((t) => this.loop(t));
       this.refreshCaps();
       this.importFromHash();
+      // unattended restarts: resume autopilot straight away (no click needed — exports don't need live audio)
+      if (/autopilot/.test(location.hash)) {
+        history.replaceState(null, '', location.pathname + location.search);
+        const P = this.state.publish, ready = (P.yt.clientId && SB.publish.youtube.persistent()) || (P.tt.relay && SB.publish.tiktok.connected());
+        if (ready) { this.state.autopilot.enabled = true; this.save(); }
+        else { this.tab = 'export'; this.renderPanels(); setTimeout(() => this.toast('Autopilot: connect YouTube (via relay) and/or TikTok in the Export tab, then press Start autopilot'), 800); }
+      }
+      if (this.state.autopilot.enabled) setTimeout(() => this.startAutopilot(), 1500);
     }
 
     // ------------------------------------------------------------ persistence
@@ -80,6 +89,7 @@
           d.look.cast = Object.assign({ names: [], colors: [] }, d.look.cast || {});
           d.preview = Object.assign(DEFAULT_STATE().preview, s.preview || {});
           d.finder = Object.assign(DEFAULT_STATE().finder, s.finder || {});
+          d.autopilot = Object.assign(DEFAULT_STATE().autopilot, s.autopilot || {});
           const P0 = DEFAULT_STATE().publish; d.publish.yt = Object.assign(P0.yt, (s.publish || {}).yt || {}); d.publish.tt = Object.assign(P0.tt, (s.publish || {}).tt || {});
         }
       } catch (e) { /* storage unavailable */ }
@@ -716,6 +726,7 @@
       }).catch((e) => this.toast('Import failed: ' + e.message));
     }
     importFromHash() {
+      try { const m = SB.publish.youtube.fromHash(); if (m) { this.toast(m); this.tab = 'export'; this.renderPanels(); } } catch (e) { this.toast('YouTube login failed: ' + e.message); }
       try { const m = SB.publish.tiktok.fromHash(); if (m) { this.toast(m); this.tab = 'export'; this.renderPanels(); } } catch (e) { this.toast('TikTok login failed: ' + e.message); }
       const h = location.hash.slice(1);
       if (h.startsWith('SB2-')) { this.loadCode(h); history.replaceState(null, '', location.pathname + location.search); }
@@ -733,10 +744,11 @@
         this.ctlText('OAuth client ID', Y.clientId, (v) => { Y.clientId = v.trim(); save(); }, { placeholder: '1234…apps.googleusercontent.com', max: 200 }),
         el('div', { class: 'row' },
           el('button', { class: 'btn ' + (ytOk ? '' : 'primary'), onclick: () => yt.connect(Y.clientId).then(() => { this.toast('YouTube connected'); this.renderPanels(); }, (e) => this.toast(e.message)) }, ytOk ? '↻ Reconnect' : 'Connect YouTube'),
+          el('button', { class: 'btn', title: 'Uses the relay (TikTok section) so the sign-in never expires — required for Autopilot', onclick: () => { try { yt.connectRelay(T.relay); } catch (e) { this.toast(e.message); } } }, yt.persistent() ? '↻ Relay sign-in' : 'Connect via relay (stays signed in)'),
           ytOk ? el('button', { class: 'btn', onclick: () => { yt.disconnect(); this.renderPanels(); } }, 'Disconnect') : null,
-          el('span', { class: 'note' }, ytOk ? `connected${this.ytWho ? ' as ' + this.ytWho : ''} · ${Math.max(0, Math.round((yt.expires - Date.now()) / 60e3))} min left` : 'not connected')),
+          el('span', { class: 'note' }, ytOk ? `connected${this.ytWho ? ' as ' + this.ytWho : ''} · ${yt.persistent() ? 'stays signed in' : Math.max(0, Math.round((yt.expires - Date.now()) / 60e3)) + ' min left'}` : 'not connected')),
         ytOk ? el('div', { class: 'row' },
-          el('button', { class: 'btn', onclick: () => yt.verify().then((v) => { this.ytWho = v.email || ''; this.toast('✓ Google confirms: upload permission granted' + (v.email ? ' for ' + v.email : '')); this.renderPanels(); }, (e) => this.toast(e.message)) }, '✓ Check with Google'),
+          el('button', { class: 'btn', onclick: () => yt.access(T.relay).then(() => yt.verify()).then((v) => { this.ytWho = v.email || ''; this.toast('✓ Google confirms: upload permission granted' + (v.email ? ' for ' + v.email : '')); this.renderPanels(); }, (e) => this.toast(e.message)) }, '✓ Check with Google'),
           el('button', { class: 'btn', onclick: () => this.testUpload('yt') }, '↑ Test upload (3s, private)')) : null,
         this.ctlToggle('Upload automatically after every export (and batch)', Y.auto, (v) => { Y.auto = v; save(); }),
         this.ctlSelect('Visibility', Y.privacy, [['public', 'Public'], ['unlisted', 'Unlisted'], ['private', 'Private']], (v) => { Y.privacy = v; save(); }),
@@ -806,7 +818,7 @@
         if (which === 'yt') {
           const meta = SB.publish.youtube.metadata(snap, res, P, null);
           meta.snippet.title = 'SatisBall test upload #shorts'; meta.status.privacyStatus = 'private'; delete meta.status.publishAt;
-          this.queue.add({ icon: '▶', label: 'YouTube test (private)', run: (onP) => SB.publish.youtube.upload(res.blob, meta, onP), doneText: (r) => `uploaded to your channel as ${r.privacy} — open ↗ to see it` });
+          this.queue.add({ icon: '▶', label: 'YouTube test (private)', run: (onP) => SB.publish.youtube.upload(res.blob, meta, onP, P.tt.relay), doneText: (r) => `uploaded to your channel as ${r.privacy} — open ↗ to see it` });
         } else this.enqueueTikTok(res, snap, name);
         this.toast('Test clip rendered — uploading (see Upload queue)');
       } catch (e) { this.toast('Test failed: ' + e.message); }
@@ -826,7 +838,7 @@
       const at = P.yt.schedule ? new Date(this.nextSlot()).toISOString() : null;
       const meta = yt.metadata(snap, res, P, at);
       if (res.duration > 180) this.toast('Over 3 minutes — YouTube will treat it as a normal video, not a Short');
-      return this.queue.add({ icon: '▶', label: `YouTube · ${meta.snippet.title}`, run: (onP) => yt.upload(res.blob, meta, onP), doneText: (r) => `${r.privacy || ''}${at ? ' · goes live ' + new Date(at).toLocaleString() : ''}` });
+      return this.queue.add({ icon: '▶', label: `YouTube · ${meta.snippet.title}`, run: (onP) => yt.upload(res.blob, meta, onP, P.tt.relay), doneText: (r) => `${r.privacy || ''}${at ? ' · goes live ' + new Date(at).toLocaleString() : ''}` });
     }
     enqueueTikTok(res, snap, name) {
       const P = this.state.publish, tt = SB.publish.tiktok;
@@ -891,6 +903,7 @@
         window.showDirectoryPicker ? this.ctlToggle('Save into a folder I choose (no download prompts)', B.useFolder, (v) => setB('useFolder', v)) : el('p', { class: 'note' }, 'Files will download one after another.'),
         el('button', { class: 'btn accent big wide', disabled: !c.video, onclick: () => this.startBatch() }, `▶ Render ${B.count} video${B.count > 1 ? 's' : ''}`));
       this.panelPublish(p);
+      this.autopilotSection(p);
     }
     refreshCaps() {
       const X = this.state.export, [w, h] = SB.recorder.RESOLUTIONS[X.res] || [1080, 1920];

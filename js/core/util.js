@@ -66,5 +66,11 @@ window.SB = window.SB || {};
 
   const fmtTime = (s) => { s = Math.max(0, s); const m = Math.floor(s / 60); const r = Math.floor(s % 60); return m + ':' + String(r).padStart(2, '0'); };
 
-  SB.util = { TAU, clamp, lerp, smooth, easeOutBack, easeOutCubic, easeInCubic, easeOutElastic, normAngle, angleDiff, RNG, hexToRgb, rgba, mix, lighten, darken, hsl, gradientAt, luminance, fmtTime };
+  /** Yield to the event loop without timers — background tabs throttle timers to ~1/min, message events aren't. */
+  const mc = typeof MessageChannel !== 'undefined' ? new MessageChannel() : null, waiters = [];
+  if (mc) mc.port1.onmessage = () => { const f = waiters.shift(); if (f) f(); };
+  const yieldNow = () => new Promise((r) => { if (!mc) { setTimeout(r, 0); return; } waiters.push(r); mc.port2.postMessage(0); });
+  const pause = async (ms) => { const end = performance.now() + ms; do await yieldNow(); while (performance.now() < end); };
+
+  SB.util = { yieldNow, pause, TAU, clamp, lerp, smooth, easeOutBack, easeOutCubic, easeInCubic, easeOutElastic, normAngle, angleDiff, RNG, hexToRgb, rgba, mix, lighten, darken, hsl, gradientAt, luminance, fmtTime };
 })(window.SB);

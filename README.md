@@ -81,6 +81,9 @@ In Chrome/Edge you can pick a folder so files save straight into it, with no dow
 
 Each result shows its tension curve. Tap one to watch that exact run, ⤓ to export it or ★ to save it, or use **Export top 5** to batch-render the winners.
 
+### Autopilot (24/7)
+On a laptop left running, the autopilot runs a 5,000-seed search across every mode every couple of hours, then renders the best run and uploads it by itself. Start it with `Start Autopilot.bat`, then set it up in the Export tab. See [AUTOPILOT.md](AUTOPILOT.md).
+
 ### Auto-publish to YouTube Shorts and TikTok
 In the **Export** tab, connect YouTube and/or TikTok and switch on auto-upload. Every export and every batch video then uploads by itself, with templated titles, captions and hashtags. YouTube uploads can be scheduled, e.g. one every 4 hours, and TikTok gets inbox drafts or direct posts. The one-time developer setup, and the platforms' limits for new apps, are in [PUBLISHING.md](PUBLISHING.md).
 
@@ -192,6 +195,7 @@ node tools/mobile.cjs .     # iPhone-sized touch emulation: bottom bar, sheets, 
 node tools/publishtest.cjs  # export + auto-upload to mocked YouTube / TikTok endpoints
 node tools/relaytest.mjs    # TikTok relay logic with TikTok's API mocked
 node tools/findertest.cjs   # seed finder: ranking, watch the best run, results kept
+node tools/autopilottest.cjs  # autopilot cycle end to end (platforms mocked), resume after reload, stop
 ```
 
 ## Licences

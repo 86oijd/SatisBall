@@ -8,7 +8,11 @@
  */
 'use strict';
 (function (SB) {
-  const TT_KEY = 'satisball.tiktok.v1';
+  const TT_KEY = 'satisball.tiktok.v1', YT_KEY = 'satisball.youtube.v1';
+  /** Yield to the event loop without timers (timers are throttled to once a minute in background tabs). */
+  const mc = new MessageChannel(), waiters = [];
+  mc.port1.onmessage = () => { const f = waiters.shift(); if (f) f(); };
+  const yieldNow = () => new Promise((r) => { waiters.push(r); mc.port2.postMessage(0); });
   const YT_UPLOAD = 'https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status';
 
   // ------------------------------------------------------------------ captions
@@ -41,7 +45,39 @@
   // ------------------------------------------------------------------ YouTube
   const youtube = {
     token: null, expires: 0, tokenClient: null, clientId: '',
-    connected() { return !!this.token && Date.now() < this.expires - 60e3; },
+    // relay mode: a refresh token (kept on this device) lets uploads continue for months without signing in
+    saved: (() => { try { return JSON.parse(localStorage.getItem(YT_KEY) || 'null'); } catch (e) { return null; } })(),
+    persistent() { return !!(this.saved && this.saved.refresh_token); },
+    connected() { return this.persistent() || (!!this.token && Date.now() < this.expires - 60e3); },
+    connectRelay(relay) {
+      if (!relay) throw new Error('set the relay URL (TikTok section) first — the same relay handles Google');
+      location.href = `${relay.replace(/\/+$/, '')}/google/login?return=${encodeURIComponent(location.href.split('#')[0])}`;
+    },
+    fromHash() {
+      const m = location.hash.match(/(?:^#|&)yt=([A-Za-z0-9_-]+)/), er = location.hash.match(/yterror=([^&]+)/);
+      if (!m && !er) return null;
+      history.replaceState(null, '', location.pathname + location.search);
+      if (er) return 'YouTube login failed: ' + decodeURIComponent(er[1]);
+      const b64 = m[1].replace(/-/g, '+').replace(/_/g, '/');
+      const t = JSON.parse(atob(b64 + '==='.slice((b64.length + 3) % 4)));
+      this.saved = { refresh_token: t.refresh_token }; try { localStorage.setItem(YT_KEY, JSON.stringify(this.saved)); } catch (e) { /* ignore */ }
+      this.token = t.access_token; this.expires = Date.now() + (t.expires_in || 3600) * 1000;
+      return 'YouTube connected (stays signed in)';
+    },
+    /** A valid access token: refreshed through the relay when running persistently. */
+    async access(relay) {
+      if (this.token && Date.now() < this.expires - 120e3) return this.token;
+      if (!this.persistent()) throw new Error('YouTube sign-in expired — press Connect YouTube again');
+      if (!relay) throw new Error('relay URL missing — needed to refresh the YouTube sign-in');
+      const r = await fetch(`${relay.replace(/\/+$/, '')}/google/refresh`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ refresh_token: this.saved.refresh_token }) });
+      const t = await r.json().catch(() => ({}));
+      if (!t.access_token) {
+        if (t.error === 'invalid_grant') { this.saved = null; try { localStorage.removeItem(YT_KEY); } catch (e) { /* ignore */ } }
+        throw new Error('YouTube refresh failed: ' + (t.error_description || t.error || r.status) + ' — connect again');
+      }
+      this.token = t.access_token; this.expires = Date.now() + (t.expires_in || 3600) * 1000;
+      return this.token;
+    },
     loadGis() {
       if (window.google && google.accounts && google.accounts.oauth2) return Promise.resolve();
       if (this._gis) return this._gis;
@@ -71,7 +107,7 @@
         this.tokenClient.requestAccessToken({ prompt: this.token ? '' : 'consent' });
       });
     },
-    disconnect() { if (this.token && window.google) try { google.accounts.oauth2.revoke(this.token, () => {}); } catch (e) { /* ignore */ } this.token = null; this.expires = 0; },
+    disconnect() { if (this.token && window.google) try { google.accounts.oauth2.revoke(this.token, () => {}); } catch (e) { /* ignore */ } this.token = null; this.expires = 0; this.saved = null; try { localStorage.removeItem(YT_KEY); } catch (e) { /* ignore */ } },
     metadata(snap, res, cfg, publishAt) {
       const v = captionVars(snap, res, cfg);
       const tags = (cfg.hashtags || '').split(/[\s,]+/).map((t) => t.replace(/^#/, '')).filter(Boolean).slice(0, 15);
@@ -90,8 +126,8 @@
       if (!String(j.scope || '').includes('youtube.upload')) throw new Error('signed in, but without YouTube upload permission — reconnect and allow it');
       return { email: j.email, expiresIn: +j.expires_in, scope: j.scope };
     },
-    async upload(blob, meta, onProgress) {
-      if (!this.connected()) throw new Error('YouTube sign-in expired — press Connect YouTube again');
+    async upload(blob, meta, onProgress, relay) {
+      await this.access(relay);
       const init = await xhr('POST', YT_UPLOAD, {
         headers: { Authorization: 'Bearer ' + this.token, 'Content-Type': 'application/json; charset=UTF-8', 'X-Upload-Content-Type': blob.type || 'video/mp4' },
         body: JSON.stringify(meta),
@@ -224,5 +260,5 @@
     pending() { return this.items.filter((i) => i.state === 'queued' || i.state === 'uploading').length; }
   }
 
-  SB.publish = { youtube, tiktok, Queue, fill, captionVars, plainHook };
+  SB.publish = { youtube, tiktok, Queue, fill, captionVars, plainHook, yieldNow };
 })(window.SB);

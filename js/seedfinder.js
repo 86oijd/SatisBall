@@ -39,10 +39,10 @@
       const orig = g.win.bind(g);
       g.win = (info) => { if (g.state === 'play') g.finishedAt = g.time; orig(info); };
       let f = 0;
-      while ((g.state === 'play' || g.state === 'intro') && f < maxSecs * 60) { g.frame(); f++; if (f % 1500 === 0) await new Promise((r) => setTimeout(r, 0)); }
+      while ((g.state === 'play' || g.state === 'intro') && f < maxSecs * 60) { g.frame(); f++; if (f % 1500 === 0) await SB.util.yieldNow(); }
       const s = score(g);
       onResult(Object.assign({ i, snap, title: g.winInfo ? g.winInfo.title : 'no finish', curve: g.log.samples.map((x) => x[1]) }, s));
-      await new Promise((r) => setTimeout(r, 0));
+      await SB.util.yieldNow();
     }
   }
 

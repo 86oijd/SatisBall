@@ -1,4 +1,9 @@
-/* SatisBall TikTok relay — a tiny server that keeps your TikTok app secret off the web page.
+/* SatisBall relay — a tiny server that keeps your TikTok and Google app secrets off the web page.
+ * Google routes (optional, needed for 24/7 autopilot: they give the studio a refresh token so YouTube
+ * uploads keep working without anyone signing in again):
+ *   GET  /google/login?return=<studio url>, GET /google/callback, POST /google/refresh {refresh_token}
+ *   env: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET (OAuth client of type "Web application";
+ *        add https://<relay>/google/callback as an authorised redirect URI)
  * Runs as a Cloudflare Worker (free) or locally with `node relay/local.mjs`.
  *
  * Environment variables:
@@ -57,6 +62,7 @@ export async function handle(req, env) {
   const self = (env.PUBLIC_URL || url.origin).replace(/\/+$/, '');
   const redirectUri = self + '/tiktok/callback';
   if (req.method === 'OPTIONS') return cors(env, req, new Response(null, { status: 204 }));
+  if (url.pathname.startsWith('/google/')) return google(req, env, url, self);
   if (!env.TIKTOK_CLIENT_KEY || !env.TIKTOK_CLIENT_SECRET) return jsonRes({ error: 'relay not configured: set TIKTOK_CLIENT_KEY and TIKTOK_CLIENT_SECRET' }, 500);
 
   if (url.pathname === '/tiktok/selftest' && req.method === 'GET') {
@@ -124,6 +130,49 @@ export async function handle(req, env) {
   }
 
   return cors(env, req, jsonRes({ ok: true, service: 'satisball-tiktok-relay' }, url.pathname === '/' ? 200 : 404));
+}
+
+// ------------------------------------------------------------------ Google (YouTube) refresh tokens
+async function signState(env, back) {
+  const payload = b64uStr(JSON.stringify({ r: back, t: Date.now(), n: crypto.getRandomValues(new Uint32Array(1))[0] }));
+  return payload + '.' + await hmac(env.GOOGLE_CLIENT_SECRET, payload);
+}
+async function readState(env, state) {
+  const [payload, sig] = String(state || '').split('.');
+  if (!payload || sig !== await hmac(env.GOOGLE_CLIENT_SECRET, payload)) return null;
+  const st = JSON.parse(unb64u(payload));
+  return Date.now() - st.t > 15 * 60e3 ? null : st;
+}
+async function googleToken(env, params) {
+  const r = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(Object.assign({ client_id: env.GOOGLE_CLIENT_ID, client_secret: env.GOOGLE_CLIENT_SECRET }, params)) });
+  return r.json();
+}
+async function google(req, env, url, self) {
+  if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET) return cors(env, req, jsonRes({ error: 'relay not configured for Google: set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET' }, 500));
+  const redirectUri = self + '/google/callback';
+  if (url.pathname === '/google/login' && req.method === 'GET') {
+    const back = url.searchParams.get('return') || '';
+    let origin = ''; try { origin = new URL(back).origin; } catch (e) { /* invalid */ }
+    if (!allowed(env, origin)) return jsonRes({ error: `return URL origin ${origin || '?'} is not in ALLOWED_ORIGINS` }, 400);
+    const auth = new URL('https://accounts.google.com/o/oauth2/v2/auth');
+    auth.search = new URLSearchParams({ client_id: env.GOOGLE_CLIENT_ID, redirect_uri: redirectUri, response_type: 'code', scope: 'https://www.googleapis.com/auth/youtube.upload', access_type: 'offline', prompt: 'consent', include_granted_scopes: 'true', state: await signState(env, back) }).toString();
+    return Response.redirect(auth.toString(), 302);
+  }
+  if (url.pathname === '/google/callback' && req.method === 'GET') {
+    const st = await readState(env, url.searchParams.get('state'));
+    if (!st) return jsonRes({ error: 'bad or expired state, try again' }, 400);
+    if (url.searchParams.get('error')) return Response.redirect(`${st.r}#yterror=${encodeURIComponent(url.searchParams.get('error'))}`, 302);
+    const t = await googleToken(env, { code: url.searchParams.get('code'), grant_type: 'authorization_code', redirect_uri: redirectUri });
+    if (!t.refresh_token) return Response.redirect(`${st.r}#yterror=${encodeURIComponent(t.error_description || t.error || 'Google did not return a refresh token')}`, 302);
+    return Response.redirect(`${st.r}#yt=${b64uStr(JSON.stringify({ access_token: t.access_token, refresh_token: t.refresh_token, expires_in: t.expires_in }))}`, 302);
+  }
+  if (!allowed(env, req.headers.get('Origin'))) return jsonRes({ error: 'origin not allowed' }, 403);
+  if (url.pathname === '/google/refresh' && req.method === 'POST') {
+    const { refresh_token } = await req.json().catch(() => ({}));
+    const t = await googleToken(env, { grant_type: 'refresh_token', refresh_token });
+    return cors(env, req, jsonRes(t, t.access_token ? 200 : 400));
+  }
+  return cors(env, req, jsonRes({ error: 'not found' }, 404));
 }
 
 export default { fetch: (req, env) => handle(req, env) };

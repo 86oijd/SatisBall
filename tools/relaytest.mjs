@@ -1,9 +1,14 @@
 // Tests the TikTok relay's logic with TikTok's API mocked (no network). Usage: node tools/relaytest.mjs
 import { handle } from '../relay/tiktok-relay.js';
-const env = { TIKTOK_CLIENT_KEY: 'ck', TIKTOK_CLIENT_SECRET: 'secret', ALLOWED_ORIGINS: 'https://me.github.io, http://localhost:8123', PUBLIC_URL: 'https://relay.test' };
+const env = { GOOGLE_CLIENT_ID: 'gid', GOOGLE_CLIENT_SECRET: 'gsec', TIKTOK_CLIENT_KEY: 'ck', TIKTOK_CLIENT_SECRET: 'secret', ALLOWED_ORIGINS: 'https://me.github.io, http://localhost:8123', PUBLIC_URL: 'https://relay.test' };
 const calls = [];
 globalThis.fetch = async (url, init = {}) => {
   url = String(url); calls.push({ url, init });
+  if (url === 'https://oauth2.googleapis.com/token') {
+    const p = new URLSearchParams(init.body.toString());
+    if (p.get('client_secret') !== 'gsec') return new Response('{"error":"invalid_client"}');
+    return new Response(JSON.stringify(p.get('grant_type') === 'authorization_code' ? { access_token: 'GA', refresh_token: 'GR', expires_in: 3599 } : { access_token: 'GA2', expires_in: 3599 }));
+  }
   if (url.endsWith('/v2/oauth/token/')) {
     const p = new URLSearchParams(init.body.toString());
     if (p.get('client_secret') !== 'secret') return new Response('{"error":"bad"}');
@@ -54,5 +59,19 @@ const up = calls[calls.length - 1];
 ok(r.status === 201 && up.init.headers['Content-Range'] === 'bytes 0-3/4' && up.init.body.byteLength === 4, 'upload forwarded');
 r = await req('/tiktok/refresh', { method: 'OPTIONS', headers: O });
 ok(r.status === 204 && /X-TikTok-Token/.test(r.headers.get('Access-Control-Allow-Headers')), 'preflight');
+// Google refresh-token flow
+r = await req('/google/login?return=' + encodeURIComponent('https://me.github.io/SatisBall/index.html'));
+const g = new URL(r.headers.get('Location') || 'http://x');
+ok(r.status === 302 && g.host === 'accounts.google.com' && g.searchParams.get('access_type') === 'offline' && g.searchParams.get('redirect_uri') === 'https://relay.test/google/callback' && /youtube\.upload/.test(g.searchParams.get('scope')), 'google login url');
+r = await req('/google/callback?code=GC&state=' + g.searchParams.get('state'));
+const gb = r.headers.get('Location') || '';
+const gt = JSON.parse(Buffer.from(gb.split('#yt=')[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString());
+ok(gb.startsWith('https://me.github.io/SatisBall/index.html#yt=') && gt.refresh_token === 'GR', 'google callback returns refresh token');
+r = await req('/google/callback?code=GC&state=bogus.sig');
+ok(r.status === 400, 'google bad state rejected');
+r = await req('/google/refresh', { method: 'POST', headers: { ...O, 'Content-Type': 'application/json' }, body: JSON.stringify({ refresh_token: 'GR' }) });
+ok(r.status === 200 && (await r.json()).access_token === 'GA2', 'google refresh');
+r = await req('/google/refresh', { method: 'POST', headers: { Origin: 'https://evil.com' }, body: '{}' });
+ok(r.status === 403, 'google refresh blocks foreign origin');
 console.log(fails ? `${fails} relay checks failed` : 'all relay checks passed');
 process.exit(fails ? 1 : 0);

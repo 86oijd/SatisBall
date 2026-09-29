@@ -14,6 +14,7 @@ It stores nothing. Your tokens live only in your own browser.
    - `TIKTOK_CLIENT_KEY`: from your TikTok developer app
    - `TIKTOK_CLIENT_SECRET`: from your TikTok developer app (type **Secret**)
    - `ALLOWED_ORIGINS`: where you open the studio, comma-separated, e.g. `https://86oijd.github.io,http://localhost:8000`
+   - `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` (optional, **needed for Autopilot**): from your Google OAuth client. Add `https://<relay>/google/callback` as an authorised redirect URI — see AUTOPILOT.md
 4. Your relay URL is `https://satisball-relay.<you>.workers.dev`.
    - In the TikTok developer portal, set the redirect URI to `https://satisball-relay.<you>.workers.dev/tiktok/callback`.
    - Paste the relay URL into the studio (**Export → TikTok → Relay URL**).
