@@ -176,6 +176,9 @@
         this.ctx = new AC({ sampleRate: SR, latencyHint: 'interactive' });
         this.ir = makeIR(2.6, 9001);
         this.graph = buildGraph(this.ctx, this.opts, this.ir);
+        // preview-only listening volume: sits after the master, so exports and live recordings are unaffected
+        this.monitor = this.ctx.createGain(); this.monitor.gain.value = this.opts.monitor ?? 0.5;
+        this.graph.master.disconnect(); this.graph.master.connect(this.monitor); this.monitor.connect(this.ctx.destination);
       }
       if (this.ctx.state === 'suspended') this.ctx.resume();
       return this.ctx;
@@ -184,6 +187,7 @@
     setOpts(o) {
       Object.assign(this.opts, o);
       if (this.graph) { this.graph.master.gain.value = this.opts.volume; this.graph.wet.gain.value = this.opts.reverb; }
+      if (this.monitor && o.monitor !== undefined) this.monitor.gain.setTargetAtTime(o.monitor, this.ctx.currentTime, 0.02);
     }
     /** A MediaStream carrying the master mix (for live recording). */
     stream() {

@@ -241,3 +241,12 @@ body.mobile.recmode aside { display: none; }
 
 textarea { resize: vertical; font-size: 13px; line-height: 1.4; }
 .sec a { color: var(--cyan); }
+
+/* preview volume */
+.vol { display: inline-flex; align-items: center; gap: 6px; }
+.vol-btn { background: none; border: none; font-size: 16px; cursor: pointer; padding: 2px 4px; }
+.vol-range { width: 110px; }
+.ctl .vol-range { width: 100%; }
+.more-vol { padding: 10px 14px 8px; border-top: 1px solid var(--line); margin-top: 4px; }
+.more-vol small { color: var(--muted); font-weight: 700; display: block; margin-bottom: 4px; }
+.more-vol .vol, .more-vol .vol-range { width: 100%; }

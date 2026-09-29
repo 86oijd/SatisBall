@@ -91,6 +91,7 @@
       this.bloomCv = document.createElement('canvas'); this.bloomCv.width = Math.round(this.canvas.width / 4); this.bloomCv.height = Math.round(this.canvas.height / 4);
       this.bloomCtx = this.bloomCv.getContext('2d');
       this.hookCache = null; this.hudPop = {};
+      this.fastBloom = cfg.audioMode === 'live'; // only the on-screen preview; exports keep the full-quality blur
       this.settings = Object.assign({}, this.def.defaults, cfg.settings || {});
       this.mode = this.def.create(this, this.settings);
       this.mode.init && this.mode.init();
@@ -203,12 +204,22 @@
       if (!pal.light && look.bloom > 0) {
         const bc = this.bloomCtx;
         bc.globalCompositeOperation = 'copy';
-        bc.filter = `blur(${(7 * k).toFixed(1)}px)`;
-        bc.drawImage(this.canvas, 0, 0, this.bloomCv.width, this.bloomCv.height);
-        bc.filter = 'none';
+        let src = this.bloomCv;
+        if (this.fastBloom) {
+          // live preview: downsample chain (1/4 -> 1/16) instead of a blur filter — near-identical glow, far cheaper
+          bc.drawImage(this.canvas, 0, 0, this.bloomCv.width, this.bloomCv.height);
+          if (!this.bloom2) { this.bloom2 = document.createElement('canvas'); this.bloom2.width = Math.max(1, this.bloomCv.width >> 2); this.bloom2.height = Math.max(1, this.bloomCv.height >> 2); this.bloom2Ctx = this.bloom2.getContext('2d'); }
+          this.bloom2Ctx.globalCompositeOperation = 'copy'; this.bloom2Ctx.imageSmoothingQuality = 'low';
+          this.bloom2Ctx.drawImage(this.bloomCv, 0, 0, this.bloom2.width, this.bloom2.height);
+          src = this.bloom2;
+        } else {
+          bc.filter = `blur(${(7 * k).toFixed(1)}px)`;
+          bc.drawImage(this.canvas, 0, 0, this.bloomCv.width, this.bloomCv.height);
+          bc.filter = 'none';
+        }
         ctx.globalCompositeOperation = 'lighter';
-        ctx.globalAlpha = look.bloom * 0.55;
-        ctx.drawImage(this.bloomCv, 0, 0, W, H);
+        ctx.globalAlpha = look.bloom * (this.fastBloom ? 0.7 : 0.55);
+        ctx.drawImage(src, 0, 0, W, H);
         ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
       }
       // tension / danger edge glow

@@ -46,6 +46,7 @@
       tt: { auto: false, relay: '', mode: 'inbox', privacy: '', comments: true, duet: true, stitch: true, consent: false, allowWebm: false },
     },
     tab: 'mode',
+    preview: { volume: 0.45, muted: false }, // listening level only — never affects exports
   });
 
   class UI {
@@ -76,6 +77,7 @@
           if (s.tab) d.tab = s.tab;
           d.look.custom = Object.assign(DEFAULT_STATE().look.custom, d.look.custom || {});
           d.look.cast = Object.assign({ names: [], colors: [] }, d.look.cast || {});
+          d.preview = Object.assign(DEFAULT_STATE().preview, s.preview || {});
           const P0 = DEFAULT_STATE().publish; d.publish.yt = Object.assign(P0.yt, (s.publish || {}).yt || {}); d.publish.tt = Object.assign(P0.tt, (s.publish || {}).tt || {});
         }
       } catch (e) { /* storage unavailable */ }
@@ -101,9 +103,25 @@
       };
     }
     gameCfg(canvas) { return this.cfgFrom(this.snapshot(), canvas); }
+    monitorGain() { const v = this.state.preview; return v.muted ? 0 : v.volume * v.volume; } // squared = natural-feeling slider
+    setPreviewVolume(v, muted) {
+      const pv = this.state.preview;
+      if (v !== undefined) { pv.volume = v; pv.muted = v === 0; }
+      if (muted !== undefined) pv.muted = muted;
+      this.engine.setOpts({ monitor: this.monitorGain() });
+      this.save();
+      for (const r of document.querySelectorAll('.vol-range')) r.value = pv.muted ? 0 : pv.volume;
+      for (const b of document.querySelectorAll('.vol-btn')) b.textContent = pv.muted || pv.volume === 0 ? '🔇' : pv.volume < 0.4 ? '🔉' : '🔊';
+    }
+    volumeControl() {
+      const pv = this.state.preview;
+      return el('span', { class: 'vol', title: 'Preview volume (exports always use the full, levelled mix)' },
+        el('button', { class: 'vol-btn', onclick: () => { if (pv.muted || pv.volume === 0) this.setPreviewVolume(pv.volume || 0.45, false); else this.setPreviewVolume(undefined, true); } }, pv.muted ? '🔇' : pv.volume < 0.4 ? '🔉' : '🔊'),
+        el('input', { type: 'range', class: 'vol-range', min: 0, max: 1, step: 0.01, value: pv.muted ? 0 : pv.volume, oninput: (e) => this.setPreviewVolume(+e.target.value) }));
+    }
     applyEngineOpts() {
       const s = this.state.sound;
-      this.engine.setOpts({ volume: s.volume, reverb: s.reverb, sfx: s.sfx, music: s.music, bed: s.bedVol });
+      this.engine.setOpts({ volume: s.volume, reverb: s.reverb, sfx: s.sfx, music: s.music, bed: s.bedVol, monitor: this.monitorGain() });
       this.engine.bank.warm(s.theme, [], 36, 96);
     }
 
@@ -219,6 +237,7 @@
         el('button', { class: 'chip', onclick: () => { this.paused = !this.paused; } }, '⏯ Pause'),
         el('label', { class: 'chip' }, el('input', { type: 'checkbox', onchange: (e) => { this.safe = e.target.checked; this.drawOverlay(); } }), ' Safe zones'),
         el('button', { class: 'chip', onclick: () => this.copyShare() }, '🔗 Copy share code'),
+        this.volumeControl(),
         this.$perf);
       const main = el('main', {}, this.stageWrap, stageBar);
       // phone layout: bottom action bar + modes/settings as bottom sheets
@@ -229,7 +248,8 @@
         el('button', { onclick: () => { this.closeSheets(); this.toggleRecMode(true); } }, '◱  Clean view (for screen recording)'),
         el('button', { onclick: () => { this.closeSheets(); this.rec ? this.stopLive() : this.startLive(); } }, '●  Record live'),
         el('button', { onclick: () => { this.closeSheets(); this.copyShare(); } }, '🔗  Copy share code'),
-        el('button', { onclick: () => { this.closeSheets(); this.safe = !this.safe; this.drawOverlay(); } }, '▦  Toggle TikTok safe zones'));
+        el('button', { onclick: () => { this.closeSheets(); this.safe = !this.safe; this.drawOverlay(); } }, '▦  Toggle TikTok safe zones'),
+        el('div', { class: 'more-vol' }, el('small', {}, 'Preview volume'), this.volumeControl()));
       const mobileBar = el('nav', { class: 'mobile-bar' },
         mb('☰', 'Modes', () => this.openSheet('modes')),
         mb('⚙', 'Settings', () => this.openSheet('panel')),
@@ -288,6 +308,17 @@
       if (w > Wd) { w = Wd; h = w * 16 / 9; }
       const st = wrap.querySelector('.stage');
       st.style.width = Math.floor(w) + 'px'; st.style.height = Math.floor(h) + 'px';
+      // render the preview at the size it's actually shown (x screen density), not always 1080x1920
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      let k = Math.round(clamp((w * dpr) / 1080, 0.35, 1) * 20) / 20;
+      if (this.mobileMQ && this.mobileMQ.matches) k = Math.min(k, 0.6);
+      if (this.liteBloom) k = Math.min(k, 0.4);
+      if (Math.abs(k - this.previewK) >= 0.05 && !this.exporting) {
+        this.previewK = k;
+        clearTimeout(this._rk);
+        const apply = () => { this.canvas.width = Math.round(1080 * k); this.canvas.height = Math.round(1920 * k); if (this.game) this.restart(false); };
+        if (this.game) this._rk = setTimeout(apply, 350); else apply();
+      }
     }
     orderedModes() {
       const list = SB.modes.list.slice();
@@ -494,7 +525,8 @@
         S.backing !== 'off' ? this.ctlRange('Backing volume', S.bedVol, 0, 1.5, 0.01, (v) => set('bedVol', v)) : null,
         el('p', { class: 'note' }, '"Builds with tension" adds kick, hats, bass and a snare roll as the run gets closer to its payoff, then drops into the win sting.'));
       this.section(p, 'Mix',
-        this.ctlRange('Master volume', S.volume, 0, 1.2, 0.01, (v) => set('volume', v)),
+        el('div', { class: 'ctl' }, el('label', {}, el('span', {}, 'Preview volume (just for listening here)')), this.volumeControl()),
+        this.ctlRange('Mix level (exports & recordings)', S.volume, 0, 1.2, 0.01, (v) => set('volume', v)),
         this.ctlRange('Notes', S.music, 0, 1.5, 0.01, (v) => set('music', v)),
         this.ctlRange('Effects (SFX)', S.sfx, 0, 1.5, 0.01, (v) => set('sfx', v)),
         this.ctlRange('Reverb', S.reverb, 0, 0.8, 0.01, (v) => set('reverb', v)));
