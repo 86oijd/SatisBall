@@ -940,6 +940,7 @@
     id: 'squares', name: 'Square Escape', icon: '■', category: 'Survival', tagline: 'Eyed squares race a random level — first to the flag or last alive',
     hook: 'Which square *escapes?*',
     hookY: 160,
+    bloomK: 0.45, // big bright tiles: full bloom washes the level out
     settings: [
       { key: 'layout', label: 'Level layout', type: 'select', def: 'random', options: [['random', 'Random each run'], ['gauntlet', 'Gauntlet (start stalls + doors)'], ['circuit', 'Circuit (rooms)'], ['tower', 'Tower climb'], ['lanes', 'Lanes'], ['stairs', 'Staircase']], rand: ['random'] },
       { key: 'squares', label: 'Squares', type: 'range', min: 2, max: 6, step: 1, def: 4, rand: [3, 5] },

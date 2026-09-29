@@ -72,6 +72,15 @@ Because the render happens offline, the video is perfectly smooth even if your P
 
 In Chrome/Edge you can pick a folder so files save straight into it, with no download prompts.
 
+### Seed finder (find the most entertaining runs)
+**Library → Seed finder** simulates dozens to hundreds of seeds of the current mode in the background, at roughly 0.2–0.4 s per seed. It ranks them 0–100 using what happened in each run:
+- how much the tension builds, and how tense the ending is
+- how many big slow-mo / zoom moments there are, and how many land near the end
+- close calls
+- how close the run lands to your target length
+
+Each result shows its tension curve. Tap one to watch that exact run, ⤓ to export it or ★ to save it, or use **Export top 5** to batch-render the winners.
+
 ### Auto-publish to YouTube Shorts and TikTok
 In the **Export** tab, connect YouTube and/or TikTok and switch on auto-upload. Every export and every batch video then uploads by itself, with templated titles, captions and hashtags. YouTube uploads can be scheduled, e.g. one every 4 hours, and TikTok gets inbox drafts or direct posts. The one-time developer setup, and the platforms' limits for new apps, are in [PUBLISHING.md](PUBLISHING.md).
 
@@ -182,6 +191,7 @@ node tools/uitest.cjs .     # drives every mode x tab, library, share codes, rep
 node tools/mobile.cjs .     # iPhone-sized touch emulation: bottom bar, sheets, clean view, export modal
 node tools/publishtest.cjs  # export + auto-upload to mocked YouTube / TikTok endpoints
 node tools/relaytest.mjs    # TikTok relay logic with TikTok's API mocked
+node tools/findertest.cjs   # seed finder: ranking, watch the best run, results kept
 ```
 
 ## Licences

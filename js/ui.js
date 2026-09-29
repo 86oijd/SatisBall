@@ -46,7 +46,8 @@
       tt: { auto: false, relay: '', mode: 'inbox', privacy: '', comments: true, duet: true, stitch: true, consent: false, allowWebm: false },
     },
     tab: 'mode',
-    preview: { volume: 0.45, muted: false }, // listening level only — never affects exports
+    preview: { volume: 0.45, muted: false },
+    finder: { count: 60, vary: false }, // listening level only — never affects exports
   });
 
   class UI {
@@ -78,6 +79,7 @@
           d.look.custom = Object.assign(DEFAULT_STATE().look.custom, d.look.custom || {});
           d.look.cast = Object.assign({ names: [], colors: [] }, d.look.cast || {});
           d.preview = Object.assign(DEFAULT_STATE().preview, s.preview || {});
+          d.finder = Object.assign(DEFAULT_STATE().finder, s.finder || {});
           const P0 = DEFAULT_STATE().publish; d.publish.yt = Object.assign(P0.yt, (s.publish || {}).yt || {}); d.publish.tt = Object.assign(P0.tt, (s.publish || {}).tt || {});
         }
       } catch (e) { /* storage unavailable */ }
@@ -586,8 +588,68 @@
     }
 
     // ------------------------------------------------------------ Library tab
+    // ------------------------------------------------------------ Seed Finder
+    finderSection(p) {
+      const F = this.state.finder;
+      const set = (k, v) => { F[k] = v; this.save(); };
+      const res = (this.finderResults || []).filter((r) => r.snap.modeId === this.state.modeId).slice(0, 5);
+      this.section(p, '🔎 Seed finder — find the most entertaining runs',
+        el('p', { class: 'note', style: 'margin:0 0 10px' }, `Simulates many seeds of ${this.def.name} in the background (no rendering) and ranks them by how much tension builds, how many big moments there are, how dramatic the ending is and how close it lands to your target length.`),
+        this.ctlRange('Seeds to try', F.count, 10, 500, 10, (v) => set('count', v)),
+        this.ctlToggle('Also vary the mode settings', F.vary, (v) => set('vary', v)),
+        el('button', { class: 'btn primary big wide', onclick: () => this.runFinder() }, `🔎 Find the best of ${F.count} runs`),
+        res.length ? el('div', { class: 'plist' }, res.map((r) => this.finderRow(r, true))) : null);
+    }
+    sparkline(curve) {
+      const c = el('canvas', { width: 120, height: 28, class: 'spark' }), g = c.getContext('2d');
+      const n = curve.length; if (n < 2) return c;
+      g.strokeStyle = '#ff3d8b'; g.lineWidth = 2; g.beginPath();
+      curve.forEach((v, i) => { const x = (i / (n - 1)) * 118 + 1, y = 26 - clamp(v, 0, 1) * 24; if (i) g.lineTo(x, y); else g.moveTo(x, y); });
+      g.stroke();
+      return c;
+    }
+    finderRow(r, compact) {
+      const tip = Object.entries(r.parts || {}).map(([k, v]) => `${k} ${Math.round(v * 100)}%`).join(' · ');
+      return el('div', { class: 'pitem frow' },
+        el('button', { class: 'pload', title: tip, onclick: () => { this.$modal.classList.add('hidden'); this.applySnapshot(r.snap, true); this.toast(`Loaded seed #${r.snap.seed} (score ${r.score})`); } },
+          el('span', { class: 'fscore' }, String(r.score)), el('b', {}, r.title), el('small', {}, `#${r.snap.seed} · ${r.secs ? r.secs.toFixed(0) + 's' : '—'} · ${tip}`)),
+        compact ? null : this.sparkline(r.curve),
+        el('button', { class: 'btn mini', title: 'Export this run', onclick: () => { this.$modal.classList.add('hidden'); this.applySnapshot(r.snap, true); this.openExport(); } }, '⤓'),
+        el('button', { class: 'btn mini', title: 'Save as preset', onclick: () => { SB.library.user.add({ name: `${SB.modes.byId[r.snap.modeId].name} #${r.snap.seed} (${r.score})`, snap: r.snap, at: Date.now() }); this.toast('Saved to My presets'); } }, '★'));
+    }
+    async runFinder() {
+      if (this.exporting || this.finding) return;
+      const F = this.state.finder, base = this.snapshot();
+      const bar = el('div', { class: 'bar' }, el('i')), status = el('p', { class: 'status' }, 'Starting…');
+      const list = el('div', { class: 'plist flist' });
+      const topBtn = el('button', { class: 'btn primary', disabled: true }, 'Export top 5');
+      const stop = el('button', { class: 'btn' }, 'Stop');
+      this.modalCard(`🔎 Seed finder · ${this.def.name}`, el('p', { class: 'muted' }, `Trying ${F.count} seeds${F.vary ? ' with varied settings' : ''} · target ${base.targetLen}s. Tap a run to watch it.`), bar, status, list, el('div', { class: 'row' }, topBtn, stop));
+      let cancelled = false; this.finding = true;
+      stop.onclick = () => { if (this.finding) cancelled = true; else this.$modal.classList.add('hidden'); };
+      const results = [];
+      const t0 = performance.now();
+      const redraw = () => { list.innerHTML = ''; results.slice(0, 12).forEach((r) => list.append(this.finderRow(r))); };
+      let last = 0;
+      await SB.seedFinder.run({ count: F.count, base, vary: F.vary, cfgFrom: (sn, cv, m) => this.cfgFrom(sn, cv, m), isCancelled: () => cancelled }, (r) => {
+        results.push(r); results.sort((a, b) => b.score - a.score);
+        const k = results.length / F.count, el2 = (performance.now() - t0) / 1000;
+        bar.firstChild.style.width = (k * 100).toFixed(1) + '%';
+        status.textContent = `${results.length} / ${F.count} runs · best ${results[0].score}/100 · ${Math.ceil(el2 / k - el2)}s left`;
+        if (performance.now() - last > 250 || results.length === F.count) { last = performance.now(); redraw(); }
+      });
+      redraw();
+      this.finding = false; stop.textContent = 'Close';
+      status.textContent = `${cancelled ? 'Stopped' : 'Done'} · ${results.length} runs · best ${results[0] ? results[0].score : 0}/100`;
+      this.finderResults = results.slice(0, 50);
+      topBtn.disabled = !results.length;
+      topBtn.onclick = () => this.startBatch(results.slice(0, 5).map((r) => r.snap));
+      if (this.tab === 'library') this.renderPanels();
+    }
+
     panel_library(p) {
       const lib = SB.library;
+      this.finderSection(p);
       this.section(p, 'Featured presets',
         el('div', { class: 'featured' }, lib.FEATURED.map((f) => {
           const m = SB.modes.byId[f.modeId]; if (!m) return null;
@@ -982,9 +1044,9 @@
       while (g.state !== 'done' && f < max) { g.frame(); f++; if (f % 1200 === 0) await new Promise((r) => setTimeout(r, 0)); }
       return { secs: f / 60, done: g.state === 'done', title: g.winInfo ? g.winInfo.title : '' };
     }
-    async startBatch() {
+    async startBatch(preset) {
       if (this.exporting) return;
-      const B = this.state.batch, o = this.exportOpts();
+      const B = Object.assign({}, this.state.batch, preset ? { count: preset.length, useFolder: this.state.batch.useFolder } : {}), o = this.exportOpts();
       const pool = B.which === 'all' ? this.orderedModes().map((m) => m.id) : B.which === 'pick' ? (B.list.length ? B.list.filter((id) => SB.modes.byId[id]) : [this.state.modeId]) : [this.state.modeId];
       let dir = null;
       if (B.useFolder && window.showDirectoryPicker) {
@@ -1001,14 +1063,15 @@
       const rng = new RNG((Math.random() * 1e9) >>> 0);
       let ok = 0;
       for (let i = 0; i < B.count && !cancelled; i++) {
-        const modeId = pool[i % pool.length], def = SB.modes.byId[modeId];
+        const modeId = preset ? preset[i].modeId : pool[i % pool.length], def = SB.modes.byId[modeId];
         const row = el('div', { class: 'bitem' }, el('span', {}, def.icon), el('b', {}, `${i + 1}. ${def.name}`), el('small', {}, 'choosing a run…'));
         items.prepend(row);
         const small = row.lastChild;
         try {
           // roll a run that lands inside the length window (up to 8 tries)
           let snap = null, len = null;
-          for (let tries = 0; tries < 8 && !cancelled; tries++) {
+          if (preset) { snap = preset[i]; len = { secs: 0 }; }
+          for (let tries = 0; tries < 8 && !cancelled && !preset; tries++) {
             const base = this.snapshot();
             const cand = Object.assign(base, { modeId, seed: rng.int(1, 2 ** 31 - 1) });
             cand.settings = B.randomSettings ? SB.modes.randomize(def, rng, def.defaults) : this.modeSettings(modeId);
@@ -1019,7 +1082,7 @@
             if (len.done && len.secs >= B.minLen && len.secs <= B.maxLen + (cand.text.outroLen || 3.4)) break;
           }
           if (cancelled) break;
-          small.textContent = `${len.secs.toFixed(0)}s · rendering…`;
+          small.textContent = preset ? `seed #${snap.seed} · rendering…` : `${len.secs.toFixed(0)}s · rendering…`;
           const res = await SB.recorder.exportRun(this.cfgFrom(snap, null, 'capture'), Object.assign({}, o, {
             maxSecs: this.maxSecsFor(snap),
             onProgress: (k, txt) => { const tot = (i + k) / B.count; bar.firstChild.style.width = (tot * 100).toFixed(1) + '%'; small.textContent = txt; status.textContent = `Video ${i + 1} of ${B.count}`; },

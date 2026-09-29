@@ -332,6 +332,7 @@
     kick(z = 0.03) { this.zoomKick = Math.max(this.zoomKick, z); }
     /** Big centred announcement. */
     banner(text, color, o = {}) {
+      if (this.g.log && this.g.state === 'play') this.g.log.banners++;
       this.banners.push({ text, color: color || '#ffffff', t: 0, dur: o.dur || 1.4, size: o.size || 86, y: o.y ?? 0.42, sub: o.sub || '' });
       if (this.banners.length > 3) this.banners.shift();
     }

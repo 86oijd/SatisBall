@@ -82,6 +82,7 @@
       this.timeScale = 1; this.slowT = 0; this.slowTarget = 1;
       this.hitstopT = 0;
       this.tension = 0; this.danger = 0; this.pulse = 0;
+      this.log = { samples: [], moments: [], banners: 0, forced: false }; // what happened, for the seed finder's scoring
       this.focus = null;
       this.introLen = this.textCfg.intro ? clamp(this.textCfg.introLen || 1.5, 0.6, 4) : 0;
       this.state = this.introLen > 0 ? 'intro' : 'play';
@@ -108,6 +109,7 @@
     bump(a) { this.pulse = Math.min(1.5, this.pulse + a); }
     /** A key moment: camera leans in on (x, y) with a zoom, optional slow-motion, flash and shake. */
     moment(o) {
+      if (this.state === 'play') this.log.moments.push(this.time);
       if (this.look.zoomFx !== false) this.focus = { x: o.x ?? this.cam.x + W / 2, y: o.y ?? this.cam.y + H / 2, zoom: o.zoom ?? 1.12, t: 0, hold: o.dur ?? 0.8 };
       if (o.slow) this.slowmo(o.slow, o.dur ?? 0.8);
       if (o.flash) this.fx.flash(o.flash, o.flashA ?? 0.25);
@@ -154,7 +156,8 @@
       this.bed.update();
       this.fx.update(dt, STEP);
       if ((this.steps & 1) === 0 && this.look.trails) this.sampleTrails();
-      if (this.state === 'play' && this.time > this.targetLen * 1.9 && this.mode.forceEnd) this.mode.forceEnd();
+      if (this.state === 'play' && (this.steps % 60) === 0) this.log.samples.push([this.time, this.tension, this.danger]);
+      if (this.state === 'play' && this.time > this.targetLen * 1.9 && this.mode.forceEnd) { this.log.forced = true; this.mode.forceEnd(); }
       if (this.state === 'finale' && this.clock - this.finaleAt > this.outro) { this.state = 'done'; this.onDone && this.onDone(); }
     }
     sampleTrails() {
@@ -201,7 +204,8 @@
       ctx.restore();
 
       // bloom (quarter-res blur added back)
-      if (!pal.light && look.bloom > 0) {
+      const bloomAmt = look.bloom * (this.def.bloomK ?? 1); // bright, flat modes (Square Escape) take much less
+      if (!pal.light && bloomAmt > 0.01) {
         const bc = this.bloomCtx;
         bc.globalCompositeOperation = 'copy';
         let src = this.bloomCv;
@@ -218,7 +222,7 @@
           bc.filter = 'none';
         }
         ctx.globalCompositeOperation = 'lighter';
-        ctx.globalAlpha = look.bloom * (this.fastBloom ? 0.7 : 0.55);
+        ctx.globalAlpha = bloomAmt * 0.26; // subtle: the old 0.55 washed scenes out
         ctx.drawImage(src, 0, 0, W, H);
         ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
       }

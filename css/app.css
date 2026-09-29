@@ -250,3 +250,10 @@ textarea { resize: vertical; font-size: 13px; line-height: 1.4; }
 .more-vol { padding: 10px 14px 8px; border-top: 1px solid var(--line); margin-top: 4px; }
 .more-vol small { color: var(--muted); font-weight: 700; display: block; margin-bottom: 4px; }
 .more-vol .vol, .more-vol .vol-range { width: 100%; }
+
+/* seed finder */
+.fscore { font: 900 15px 'Unbounded', sans-serif; color: var(--accent2); }
+.frow .pload { grid-template-columns: 42px 1fr; }
+.spark { flex: none; width: 120px; height: 28px; opacity: .9; }
+.flist { max-height: 46vh; }
+body.mobile .spark { display: none; }
